@@ -2,12 +2,10 @@
   "name": "backend",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev": "nodemon src/server.js"
   },
   "keywords": [],
   "author": "",
