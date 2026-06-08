@@ -101,7 +101,7 @@ function Header({ admin = false }) {
       </div>
 
       <nav>
-        
+
       </nav>
     </header>
   );
@@ -144,13 +144,35 @@ function HomePage() {
   }, []);
 
   async function cargarPlatos() {
-    const { data } = await api.get("/platos");
-    setPlatos(data);
+    try {
+      const { data } = await api.get("/platos");
+
+      if (Array.isArray(data)) {
+        setPlatos(data);
+      } else {
+        console.error("La respuesta de /platos no es un array:", data);
+        setPlatos([]);
+      }
+    } catch (error) {
+      console.error("Error cargando platos:", error);
+      setPlatos([]);
+    }
   }
 
   async function cargarHorarios() {
-    const { data } = await api.get("/horarios");
-    setHorarios(data);
+    try {
+      const { data } = await api.get("/horarios");
+
+      if (Array.isArray(data)) {
+        setHorarios(data);
+      } else {
+        console.error("La respuesta de /horarios no es un array:", data);
+        setHorarios([]);
+      }
+    } catch (error) {
+      console.error("Error cargando horarios:", error);
+      setHorarios([]);
+    }
   }
 
   const total = useMemo(() => {
@@ -206,11 +228,10 @@ function HomePage() {
     const textoItems = carrito
       .map((item) => {
         const lineaGuarnicion = item.guarnicion
-          ? `\n  Guarnición: ${item.guarnicion.nombre}${
-              Number(item.guarnicion.precio) > 0
-                ? ` +$${formatMoney(item.guarnicion.precio)}`
-                : ""
-            }`
+          ? `\n  Guarnición: ${item.guarnicion.nombre}${Number(item.guarnicion.precio) > 0
+            ? ` +$${formatMoney(item.guarnicion.precio)}`
+            : ""
+          }`
           : "";
 
         return `- ${item.cantidad}x ${item.nombre} - $${formatMoney(
@@ -397,7 +418,7 @@ function PlatoCard({ plato, agregarAlCarrito, carrito, setCarrito }) {
     (item) =>
       item.platoId === plato.id &&
       String(item.guarnicion?.id || "") ===
-        String(guarnicionSeleccionada?.id || "")
+      String(guarnicionSeleccionada?.id || "")
   );
 
   const cantidad = itemExistente?.cantidad || 0;
@@ -643,10 +664,10 @@ function AdminPage() {
         api.get("/horarios"),
       ]);
 
-    setPlatos(platosRes.data);
-    setCategorias(categoriasRes.data);
-    setGuarniciones(guarnicionesRes.data);
-    setHorariosEntrega(horariosRes.data);
+    setPlatos(Array.isArray(platosRes.data) ? platosRes.data : []);
+    setCategorias(Array.isArray(categoriasRes.data) ? categoriasRes.data : []);
+    setGuarniciones(Array.isArray(guarnicionesRes.data) ? guarnicionesRes.data : []);
+    setHorariosEntrega(Array.isArray(horariosRes.data) ? horariosRes.data : []);
   }
 
   function toggleGuarnicion(id) {
@@ -1638,15 +1659,14 @@ function AdminPlatos({
                       Guarniciones:{" "}
                       {plato.guarniciones?.length
                         ? plato.guarniciones
-                            .map(
-                              (g) =>
-                                `${g.nombre}${
-                                  Number(g.precio) > 0
-                                    ? ` +$${formatMoney(g.precio)}`
-                                    : ""
-                                }`
-                            )
-                            .join(", ")
+                          .map(
+                            (g) =>
+                              `${g.nombre}${Number(g.precio) > 0
+                                ? ` +$${formatMoney(g.precio)}`
+                                : ""
+                              }`
+                          )
+                          .join(", ")
                         : "Sin guarniciones"}
                     </small>
 
