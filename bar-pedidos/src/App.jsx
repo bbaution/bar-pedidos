@@ -258,7 +258,7 @@ Total: $${formatMoney(total)}`;
   }
 
   function comprarPorWhatsapp() {
-    const numeroBar = "5493816796196";
+    const numeroBar = "5493816432708";
     const mensaje = encodeURIComponent(generarMensajeWhatsapp());
     window.open(`https://wa.me/${numeroBar}?text=${mensaje}`, "_blank");
   }
