@@ -267,6 +267,53 @@ app.put("/api/admin/platos/:id", auth, async (req, res) => {
   res.json({ ok: true });
 });
 
+app.get("/api/horarios", async (req, res) => {
+  const [rows] = await pool.query(
+    "SELECT * FROM horarios_entrega WHERE activo = TRUE ORDER BY orden ASC"
+  );
+
+  res.json(rows);
+});
+
+app.get("/api/admin/horarios", auth, async (req, res) => {
+  const [rows] = await pool.query(
+    "SELECT * FROM horarios_entrega ORDER BY orden ASC"
+  );
+
+  res.json(rows);
+});
+
+app.post("/api/admin/horarios", auth, async (req, res) => {
+  const { horario, activo, orden } = req.body;
+
+  await pool.query(
+    "INSERT INTO horarios_entrega (horario, activo, orden) VALUES (?, ?, ?)",
+    [horario, activo, orden]
+  );
+
+  res.json({ ok: true });
+});
+
+app.put("/api/admin/horarios/:id", auth, async (req, res) => {
+  const { id } = req.params;
+  const { horario, activo, orden } = req.body;
+
+  await pool.query(
+    "UPDATE horarios_entrega SET horario = ?, activo = ?, orden = ? WHERE id = ?",
+    [horario, activo, orden, id]
+  );
+
+  res.json({ ok: true });
+});
+
+app.delete("/api/admin/horarios/:id", auth, async (req, res) => {
+  const { id } = req.params;
+
+  await pool.query("DELETE FROM horarios_entrega WHERE id = ?", [id]);
+
+  res.json({ ok: true });
+});
+
 app.delete("/api/admin/platos/:id", auth, async (req, res) => {
   const { id } = req.params;
 
