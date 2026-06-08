@@ -22,7 +22,7 @@ app.use(
 
 app.use(express.json());
 
-const JWT_SECRET = "CAMBIAR_ESTO_POR_UN_SECRET_LARGO";
+const JWT_SECRET = process.env.JWT_SECRET || "CAMBIAR_ESTO_POR_UN_SECRET_LARGO";
 
 function auth(req, res, next) {
     const header = req.headers.authorization;
@@ -323,6 +323,8 @@ app.delete("/api/admin/platos/:id", auth, async (req, res) => {
   res.json({ ok: true });
 });
 
-app.listen(4000, () => {
-    console.log("Backend listo en http://localhost:4000");
+const PORT = process.env.PORT || 4000;
+
+app.listen(PORT, () => {
+  console.log(`Backend listo en puerto ${PORT}`);
 });
