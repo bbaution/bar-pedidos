@@ -113,3 +113,152 @@ input{
 .card {
   min-height: 190px;
 }
+@media (max-width: 620px) {
+  main:not(.layout) {
+    width: 94%;
+    margin: 16px auto;
+    overflow-x: hidden;
+  }
+
+  .admin-section {
+    padding: 14px;
+    border-radius: 18px;
+    overflow: hidden;
+  }
+
+  .admin-form,
+  .admin-form-simple,
+  .edit-plato-form {
+    display: grid;
+    grid-template-columns: 1fr !important;
+    gap: 10px;
+    width: 100%;
+  }
+
+  .admin-form input,
+  .admin-form select,
+  .admin-form button,
+  .admin-form-simple input,
+  .admin-form-simple select,
+  .admin-form-simple button,
+  .edit-plato-form input,
+  .edit-plato-form select,
+  .edit-plato-form button {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .check-admin {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 24px 1fr;
+    align-items: center;
+    gap: 10px;
+    color: var(--text);
+    font-size: 15px;
+    line-height: 1.2;
+  }
+
+  .check-admin input {
+    width: 20px !important;
+    height: 20px;
+    margin: 0;
+  }
+
+  .guarniciones-admin {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .guarniciones-admin label {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 22px 1fr;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: 12px;
+  }
+
+  .guarniciones-admin input {
+    width: 18px !important;
+    height: 18px;
+    margin: 0;
+  }
+
+  .admin-list {
+    gap: 12px;
+  }
+
+  .admin-item {
+    grid-template-columns: 1fr !important;
+    text-align: left;
+    align-items: start;
+    padding: 16px;
+    border-radius: 16px;
+    gap: 10px;
+  }
+
+  .admin-item > div:first-child {
+    width: 100%;
+  }
+
+  .admin-item strong {
+    display: block;
+    font-size: 20px;
+    color: var(--green-dark);
+    text-align: left;
+  }
+
+  .admin-item p {
+    margin: 6px 0;
+    font-size: 18px;
+    text-align: left;
+  }
+
+  .admin-item small {
+    display: block;
+    width: 100%;
+    font-size: 14px;
+    line-height: 1.4;
+    text-align: left;
+    color: var(--muted);
+  }
+
+  .admin-item > div:last-child {
+    width: 100%;
+    display: flex;
+    gap: 8px;
+  }
+
+  .admin-item > div:last-child button {
+    flex: 1;
+    background: var(--green);
+    color: white;
+    border-radius: 12px;
+    padding: 11px;
+  }
+
+  .admin-item > div:last-child button:last-child {
+    background: var(--orange);
+  }
+
+  .admin-mini-item {
+    grid-template-columns: 1fr !important;
+    text-align: left;
+    align-items: start;
+    gap: 8px;
+  }
+
+  .admin-mini-item button {
+    width: 100%;
+  }
+
+  .edit-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+}
