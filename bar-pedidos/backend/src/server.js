@@ -34,7 +34,11 @@ async function clienteMiddleware(req, res, next) {
   try {
     let hostname = req.hostname.replace("www.", "");
 
-    if (hostname.includes("localhost") || hostname.includes("127.0.0.1")) {
+    if (
+      hostname.includes("localhost") ||
+      hostname.includes("127.0.0.1") ||
+      hostname.includes("railway.app")
+    ) {
       const [clientes] = await pool.query(
         "SELECT * FROM clientes WHERE subdominio = ? AND activo = TRUE LIMIT 1",
         ["maikai"]
