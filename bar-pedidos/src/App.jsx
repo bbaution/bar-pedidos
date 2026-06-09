@@ -86,18 +86,13 @@ function ProtectedRoute({ children }) {
 // Header reutilizable
 // =====================================================
 
-function Header({ admin = false }) {
+function Header({ admin = false, logoUrl = null }) {
   const navigate = useNavigate();
-
-  function logout() {
-    localStorage.removeItem("admin_token");
-    navigate("/admin/login");
-  }
 
   return (
     <header className="topbar">
       <div className="brand" onClick={() => navigate("/")}>
-        <img src={logo} alt="Maikai" />
+        <img src={logoUrl || logo} alt="Logo" />
       </div>
 
       <nav>
@@ -114,6 +109,7 @@ function Header({ admin = false }) {
                   navigate("/admin/login");
                 }}
               >
+                <LogOut size={18} />
                 Cerrar sesión
               </button>
             </>
@@ -145,6 +141,7 @@ function HomePage() {
   const [platos, setPlatos] = useState([]);
   const [horarios, setHorarios] = useState([]);
   const [carrito, setCarrito] = useState([]);
+  const [config, setConfig] = useState(null);
 
   const [form, setForm] = useState({
     nombre: "",
@@ -158,7 +155,24 @@ function HomePage() {
   useEffect(() => {
     cargarPlatos();
     cargarHorarios();
+    cargarConfig();
   }, []);
+
+  async function cargarConfig() {
+  try {
+    const { data } = await api.get("/config");
+    setConfig(data.cliente);
+
+    if (data.cliente?.color_primario) {
+      document.documentElement.style.setProperty(
+        "--green",
+        data.cliente.color_primario
+      );
+    }
+  } catch (error) {
+    console.error("Error cargando configuración:", error);
+  }
+}
 
   async function cargarPlatos() {
     try {
@@ -275,14 +289,14 @@ Total: $${formatMoney(total)}`;
   }
 
   function comprarPorWhatsapp() {
-    const numeroBar = "5493816432708";
+    const numeroBar = config?.whatsapp || "5493816432708";
     const mensaje = encodeURIComponent(generarMensajeWhatsapp());
     window.open(`https://wa.me/${numeroBar}?text=${mensaje}`, "_blank");
   }
 
   return (
     <div className="app">
-      <Header />
+      <Header logoUrl={config?.logo_url} />
 
       <main className="layout">
         <section>
@@ -627,6 +641,17 @@ function AdminPage() {
   const [guarniciones, setGuarniciones] = useState([]);
   const [horariosEntrega, setHorariosEntrega] = useState([]);
 
+  const [mostrarConfig, setMostrarConfig] = useState(false);
+
+  const [configLocal, setConfigLocal] = useState({
+    nombre: "",
+    whatsapp: "",
+    logo_url: "",
+    color_primario: "#2f4a3f",
+    dominio_personalizado: "",
+    activo: true,
+  });
+
   const [mostrarCategorias, setMostrarCategorias] = useState(false);
   const [mostrarGuarniciones, setMostrarGuarniciones] = useState(false);
   const [mostrarHorarios, setMostrarHorarios] = useState(false);
@@ -701,18 +726,47 @@ function AdminPage() {
   }, []);
 
   async function cargarTodo() {
-    const [platosRes, categoriasRes, guarnicionesRes, horariosRes] =
+    const [platosRes, categoriasRes, guarnicionesRes, horariosRes, configRes] =
       await Promise.all([
         api.get("/platos"),
         api.get("/categorias"),
         api.get("/guarniciones"),
         api.get("/horarios"),
+        api.get("/admin/config", getAuthHeaders()),
       ]);
 
     setPlatos(Array.isArray(platosRes.data) ? platosRes.data : []);
     setCategorias(Array.isArray(categoriasRes.data) ? categoriasRes.data : []);
     setGuarniciones(Array.isArray(guarnicionesRes.data) ? guarnicionesRes.data : []);
     setHorariosEntrega(Array.isArray(horariosRes.data) ? horariosRes.data : []);
+
+    setConfigLocal({
+      nombre: configRes.data?.nombre || "",
+      whatsapp: configRes.data?.whatsapp || "",
+      logo_url: configRes.data?.logo_url || "",
+      color_primario: configRes.data?.color_primario || "#2f4a3f",
+      dominio_personalizado: configRes.data?.dominio_personalizado || "",
+      activo: Boolean(configRes.data?.activo),
+    });
+  }
+
+  async function guardarConfigLocal() {
+    try {
+      await api.put(
+        "/admin/config",
+        {
+          ...configLocal,
+          activo: Boolean(configLocal.activo),
+        },
+        getAuthHeaders()
+      );
+
+      alert("Configuración guardada");
+      cargarTodo();
+    } catch (error) {
+      console.error("Error guardando configuración:", error);
+      alert("Error guardando configuración");
+    }
   }
 
   function toggleGuarnicion(id) {
@@ -982,6 +1036,14 @@ function AdminPage() {
       <main>
         <h2>Panel admin</h2>
 
+        <AdminConfigLocal
+          mostrar={mostrarConfig}
+          setMostrar={setMostrarConfig}
+          configLocal={configLocal}
+          setConfigLocal={setConfigLocal}
+          guardarConfigLocal={guardarConfigLocal}
+        />
+
         <AdminCategorias
           mostrar={mostrarCategorias}
           setMostrar={setMostrarCategorias}
@@ -1051,6 +1113,97 @@ function AdminPage() {
         />
       </main>
     </div>
+  );
+}
+
+// =====================================================
+// Admin: configuración del local
+// =====================================================
+
+function AdminConfigLocal({
+  mostrar,
+  setMostrar,
+  configLocal,
+  setConfigLocal,
+  guardarConfigLocal,
+}) {
+  return (
+    <section className="admin-section">
+      <button className="admin-toggle" onClick={() => setMostrar(!mostrar)}>
+        Configuración del local {mostrar ? "▲" : "▼"}
+      </button>
+
+      {mostrar && (
+        <div className="admin-form">
+          <input
+            placeholder="Nombre del local"
+            value={configLocal.nombre}
+            onChange={(e) =>
+              setConfigLocal({
+                ...configLocal,
+                nombre: e.target.value,
+              })
+            }
+          />
+
+          <input
+            placeholder="WhatsApp. Ej: 5493816796196"
+            value={configLocal.whatsapp}
+            onChange={(e) =>
+              setConfigLocal({
+                ...configLocal,
+                whatsapp: e.target.value,
+              })
+            }
+          />
+
+          <input
+            placeholder="URL del logo"
+            value={configLocal.logo_url}
+            onChange={(e) =>
+              setConfigLocal({
+                ...configLocal,
+                logo_url: e.target.value,
+              })
+            }
+          />
+
+          <input
+            type="color"
+            title="Color principal"
+            value={configLocal.color_primario}
+            onChange={(e) =>
+              setConfigLocal({
+                ...configLocal,
+                color_primario: e.target.value,
+              })
+            }
+          />
+
+           <label className="check-admin">
+            <input
+              type="checkbox"
+              checked={configLocal.activo}
+              onChange={(e) =>
+                setConfigLocal({
+                  ...configLocal,
+                  activo: e.target.checked,
+                })
+              }
+            />
+            Local activo
+          </label>
+
+          {configLocal.logo_url && (
+            <div className="logo-preview-admin">
+              <img src={configLocal.logo_url} alt="Logo preview" />
+            </div>
+          )}
+
+          <button onClick={guardarConfigLocal}>Guardar configuración</button>
+        </div>
+      )}
+    </section>
   );
 }
 
