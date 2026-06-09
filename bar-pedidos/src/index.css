@@ -262,3 +262,62 @@ input{
     width: 100%;
   }
 }
+
+.menu-header {
+  position: sticky;
+  top: 25px;
+  z-index: 20;
+  background: var(--bg);
+
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+
+  padding: 10px 0 12px;
+}
+
+.category-slider {
+  width: 100%;
+
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 10px;
+
+  overflow-x: auto;
+  overflow-y: hidden;
+
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+
+  padding-bottom: 4px;
+}
+
+.category-slider::-webkit-scrollbar {
+  display: none;
+}
+
+.category-slider button {
+  flex: 0 0 auto;
+
+  white-space: nowrap;
+
+  border: none;
+  border-radius: 999px;
+
+  background: #efefef;
+  color: var(--green-dark);
+
+  padding: 10px 18px;
+
+  font-size: 14px;
+  font-weight: 700;
+
+  cursor: pointer;
+}
+.layout,
+main,
+section {
+  max-width: 100%;
+  overflow-x: hidden;
+}

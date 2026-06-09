@@ -101,7 +101,24 @@ function Header({ admin = false }) {
       </div>
 
       <nav>
+        <div className="header-actions">
+          {window.location.pathname.startsWith("/admin") && (
+            <>
+              <button onClick={() => navigate("/")}>
+                Ver menú
+              </button>
 
+              <button
+                onClick={() => {
+                  localStorage.removeItem("admin_token");
+                  navigate("/admin/login");
+                }}
+              >
+                Cerrar sesión
+              </button>
+            </>
+          )}
+        </div>
       </nav>
     </header>
   );
@@ -269,11 +286,39 @@ Total: $${formatMoney(total)}`;
 
       <main className="layout">
         <section>
-          <h2>Nuestro menú</h2>
+          <div className="menu-header">
+            <h2>Nuestro menú</h2>
+
+            <div className="category-slider">
+              {Object.keys(platosPorCategoria).map((categoria) => (
+                <button
+                  key={categoria}
+                  onClick={() => {
+                    const el = document.getElementById(
+                      `cat-${categoria.replace(/\s+/g, "-").toLowerCase()}`
+                    );
+
+                    if (el) {
+                      el.scrollIntoView({
+                        behavior: "smooth",
+                        block: "start",
+                      });
+                    }
+                  }}
+                >
+                  {categoria}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {Object.entries(platosPorCategoria).map(
             ([categoria, platosCategoria]) => (
-              <div className="categoria-menu" key={categoria}>
+              <div
+                className="categoria-menu"
+                key={categoria}
+                id={`cat-${categoria.replace(/\s+/g, "-").toLowerCase()}`}
+              >
                 <h3>{categoria}</h3>
 
                 <div className="grid">
