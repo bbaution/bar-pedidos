@@ -444,8 +444,9 @@ Total: $${formatMoney(pedidoCreado.total || total)}`;
 
       const numeroBar = config?.whatsapp || "5493816432708";
       const mensaje = encodeURIComponent(generarMensajeWhatsapp(pedidoCreado));
+      const whatsappUrl = `https://wa.me/${numeroBar}?text=${mensaje}`;
 
-      window.open(`https://wa.me/${numeroBar}?text=${mensaje}`, "_blank");
+      window.location.href = whatsappUrl;
     } catch (error) {
       console.error("Error creando pedido antes de WhatsApp:", error);
       alert("No se pudo crear el pedido. Intentá nuevamente.");
@@ -976,9 +977,9 @@ function AdminPage() {
       prev.map((item) =>
         item.temp_id === tempId
           ? {
-              ...item,
-              ...cambios,
-            }
+            ...item,
+            ...cambios,
+          }
           : item
       )
     );
