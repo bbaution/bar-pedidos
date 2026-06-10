@@ -84,7 +84,7 @@ function PedidoTracking() {
   useEffect(() => {
     cargarPedido();
 
-    const socket = io("http://localhost:4000");
+    const socket = io(import.meta.env.VITE_API_URL || window.location.origin);
 
     socket.on("pedido_actualizado", () => {
       cargarPedido();
@@ -896,7 +896,7 @@ function AdminPage() {
   useEffect(() => {
     cargarTodo();
 
-    const socket = io("http://localhost:4000");
+    const socket = io(import.meta.env.VITE_API_URL || window.location.origin);
 
     socket.on("pedido_nuevo", () => {
       cargarTodo();
