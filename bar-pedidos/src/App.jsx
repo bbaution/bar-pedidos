@@ -5,10 +5,11 @@
 // =====================================================
 
 import { useEffect, useMemo, useState } from "react";
-import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import { Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import "./App.css";
 import logo from "./assets/maikai-logo.png";
 import api from "./services/api";
+import { io } from "socket.io-client";
 
 import {
   ShoppingCart,
@@ -56,6 +57,7 @@ export default function App() {
     <Routes>
       <Route path="/" element={<HomePage />} />
       <Route path="/admin/login" element={<AdminLoginPage />} />
+      <Route path="/pedido/:codigo" element={<PedidoTracking />} />
       <Route
         path="/admin"
         element={
@@ -65,6 +67,128 @@ export default function App() {
         }
       />
     </Routes>
+  );
+}
+
+
+// =====================================================
+// Tracking público del pedido
+// =====================================================
+
+function PedidoTracking() {
+  const { codigo } = useParams();
+  const navigate = useNavigate();
+  const [pedido, setPedido] = useState(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    cargarPedido();
+
+    const socket = io("http://localhost:4000");
+
+    socket.on("pedido_actualizado", () => {
+      cargarPedido();
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [codigo]);
+
+  async function cargarPedido() {
+    try {
+      const res = await api.get(`/pedidos/${codigo}`);
+      setPedido(res.data);
+      setError("");
+    } catch (error) {
+      console.error("Error cargando pedido:", error);
+      setError("Pedido no encontrado");
+    }
+  }
+
+  async function cambiarEstadoDesdeTracking(nuevoEstado) {
+    const accion = nuevoEstado === "en_preparacion" ? "confirmar" : "cancelar";
+
+    const ok = confirm(`¿Está seguro que quiere ${accion} el pedido #${pedido.codigo}?`);
+    if (!ok) return;
+
+    try {
+      await api.patch(
+        `/admin/pedidos/${pedido.id}/estado`,
+        { estado: nuevoEstado },
+        getAuthHeaders()
+      );
+
+      navigate("/admin");
+    } catch (error) {
+      console.error("Error actualizando pedido desde link:", error);
+      alert("No se pudo actualizar el pedido. Verificá que estés logueado como admin.");
+    }
+  }
+
+  function textoEstado(estado) {
+    const textos = {
+      pendiente_confirmacion: "Esperando confirmación",
+      en_preparacion: "En preparación",
+      en_camino: "En camino",
+      entregado: "Entregado",
+      cancelado: "Cancelado",
+    };
+
+    return textos[estado] || estado;
+  }
+
+  if (error) {
+    return (
+      <div className="tracking-page">
+        <div className="tracking-card">
+          <h1>{error}</h1>
+          <p>Verificá que el link sea correcto.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!pedido) {
+    return (
+      <div className="tracking-page">
+        <div className="tracking-card">Cargando pedido...</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="tracking-page">
+      <div className="tracking-card">
+        <h1>Pedido #{pedido.codigo}</h1>
+        <h2>{textoEstado(pedido.estado)}</h2>
+
+        <p><strong>Cliente:</strong> {pedido.cliente_nombre}</p>
+        <p><strong>Horario:</strong> {pedido.horario_entrega}</p>
+        <p><strong>Total:</strong> ${formatMoney(pedido.total)}</p>
+
+        <h3>Productos</h3>
+
+        {pedido.items?.map((item) => (
+          <div key={item.id} className="tracking-item">
+            {item.cantidad}x {item.nombre_producto}
+          </div>
+        ))}
+
+        {localStorage.getItem("admin_token") &&
+          pedido.estado === "pendiente_confirmacion" && (
+            <div className="tracking-admin-actions">
+              <button onClick={() => cambiarEstadoDesdeTracking("en_preparacion")}>
+                Confirmar pedido
+              </button>
+
+              <button onClick={() => cambiarEstadoDesdeTracking("cancelado")}>
+                Cancelar pedido
+              </button>
+            </div>
+          )}
+      </div>
+    </div>
   );
 }
 
@@ -159,20 +283,20 @@ function HomePage() {
   }, []);
 
   async function cargarConfig() {
-  try {
-    const { data } = await api.get("/config");
-    setConfig(data.cliente);
+    try {
+      const { data } = await api.get("/config");
+      setConfig(data.cliente);
 
-    if (data.cliente?.color_primario) {
-      document.documentElement.style.setProperty(
-        "--green",
-        data.cliente.color_primario
-      );
+      if (data.cliente?.color_primario) {
+        document.documentElement.style.setProperty(
+          "--green",
+          data.cliente.color_primario
+        );
+      }
+    } catch (error) {
+      console.error("Error cargando configuración:", error);
     }
-  } catch (error) {
-    console.error("Error cargando configuración:", error);
   }
-}
 
   async function cargarPlatos() {
     try {
@@ -255,11 +379,12 @@ function HomePage() {
     setCarrito((prev) => prev.filter((item) => item.id !== id));
   }
 
-  function generarMensajeWhatsapp() {
+  function generarMensajeWhatsapp(pedidoCreado) {
     const textoItems = carrito
       .map((item) => {
         const lineaGuarnicion = item.guarnicion
-          ? `\n  Guarnición: ${item.guarnicion.nombre}${Number(item.guarnicion.precio) > 0
+          ? `
+  Guarnición: ${item.guarnicion.nombre}${Number(item.guarnicion.precio) > 0
             ? ` +$${formatMoney(item.guarnicion.precio)}`
             : ""
           }`
@@ -271,7 +396,12 @@ function HomePage() {
       })
       .join("\n");
 
+    const linkSeguimiento = `${window.location.origin}/pedido/${pedidoCreado.codigo}`;
+
     return `Hola, quiero hacer un pedido:
+
+Pedido: #${pedidoCreado.codigo}
+Link del pedido: ${linkSeguimiento}
 
 Cliente: ${form.nombre}
 Domicilio: ${form.domicilio}
@@ -285,13 +415,41 @@ ${textoItems}
 Observaciones:
 ${form.observaciones || "Sin observaciones"}
 
-Total: $${formatMoney(total)}`;
+Total: $${formatMoney(pedidoCreado.total || total)}`;
   }
 
-  function comprarPorWhatsapp() {
-    const numeroBar = config?.whatsapp || "5493816432708";
-    const mensaje = encodeURIComponent(generarMensajeWhatsapp());
-    window.open(`https://wa.me/${numeroBar}?text=${mensaje}`, "_blank");
+  async function comprarPorWhatsapp() {
+    try {
+      const payload = {
+        cliente_nombre: form.nombre,
+        telefono: form.telefono,
+        direccion: form.domicilio,
+        horario_entrega: form.horario,
+        observaciones: `Forma de pago: ${form.formaPago}${form.observaciones ? ` | ${form.observaciones}` : ""}`,
+        items: carrito.map((item) => ({
+          plato_id: item.platoId || null,
+          nombre: item.guarnicion
+            ? `${item.nombre} con ${item.guarnicion.nombre}`
+            : item.nombre,
+          cantidad: item.cantidad,
+          precio: item.precio,
+          observaciones: item.guarnicion
+            ? `Guarnición: ${item.guarnicion.nombre}`
+            : null,
+        })),
+      };
+
+      const res = await api.post("/pedidos", payload);
+      const pedidoCreado = res.data.pedido;
+
+      const numeroBar = config?.whatsapp || "5493816432708";
+      const mensaje = encodeURIComponent(generarMensajeWhatsapp(pedidoCreado));
+
+      window.open(`https://wa.me/${numeroBar}?text=${mensaje}`, "_blank");
+    } catch (error) {
+      console.error("Error creando pedido antes de WhatsApp:", error);
+      alert("No se pudo crear el pedido. Intentá nuevamente.");
+    }
   }
 
   return (
@@ -640,6 +798,19 @@ function AdminPage() {
   const [categorias, setCategorias] = useState([]);
   const [guarniciones, setGuarniciones] = useState([]);
   const [horariosEntrega, setHorariosEntrega] = useState([]);
+  const [pedidos, setPedidos] = useState([]);
+  const [pedidoEditando, setPedidoEditando] = useState(null);
+  const [pedidoForm, setPedidoForm] = useState({
+    cliente_nombre: "",
+    telefono: "",
+    direccion: "",
+    horario_entrega: "",
+    observaciones: "",
+    costo_envio: 0,
+  });
+
+  const [pedidoItemsEditando, setPedidoItemsEditando] = useState([]);
+  const [platoAgregarPedidoId, setPlatoAgregarPedidoId] = useState("");
 
   const [mostrarConfig, setMostrarConfig] = useState(false);
 
@@ -649,6 +820,7 @@ function AdminPage() {
     logo_url: "",
     color_primario: "#2f4a3f",
     dominio_personalizado: "",
+    costo_envio_fijo: 0,
     activo: true,
   });
 
@@ -723,22 +895,230 @@ function AdminPage() {
 
   useEffect(() => {
     cargarTodo();
+
+    const socket = io("http://localhost:4000");
+
+    socket.on("pedido_nuevo", () => {
+      cargarTodo();
+    });
+
+    socket.on("pedido_actualizado", () => {
+      cargarTodo();
+    });
+
+    return () => {
+      socket.disconnect();
+    };
   }, []);
 
+  async function cambiarEstadoPedido(id, estado) {
+    if (estado === "en_preparacion") {
+      const ok = confirm("¿Está seguro que quiere confirmar este pedido?");
+      if (!ok) return;
+    }
+
+    try {
+      await api.patch(
+        `/admin/pedidos/${id}/estado`,
+        { estado },
+        getAuthHeaders()
+      );
+
+      cargarTodo();
+    } catch (error) {
+      console.error("Error actualizando pedido:", error);
+      alert("Error actualizando pedido");
+    }
+  }
+
+  function abrirModalEditarPedido(pedido) {
+    setPedidoEditando(pedido);
+    setPedidoForm({
+      cliente_nombre: pedido.cliente_nombre || "",
+      telefono: pedido.telefono || "",
+      direccion: pedido.direccion || "",
+      horario_entrega: pedido.horario_entrega || "",
+      observaciones: pedido.observaciones || "",
+      costo_envio: Number(pedido.costo_envio || 0),
+    });
+
+    setPedidoItemsEditando(
+      (pedido.items || []).map((item) => ({
+        temp_id: item.id || crypto.randomUUID(),
+        id: item.id,
+        plato_id: item.plato_id || null,
+        nombre_producto: item.nombre_producto || item.nombre || "",
+        cantidad: Number(item.cantidad || 1),
+        precio_unitario: Number(item.precio_unitario || item.precio || 0),
+        observaciones: item.observaciones || "",
+      }))
+    );
+
+    setPlatoAgregarPedidoId("");
+  }
+
+  function cerrarModalPedido() {
+    setPedidoEditando(null);
+    setPedidoForm({
+      cliente_nombre: "",
+      telefono: "",
+      direccion: "",
+      horario_entrega: "",
+      observaciones: "",
+      costo_envio: 0,
+    });
+    setPedidoItemsEditando([]);
+    setPlatoAgregarPedidoId("");
+  }
+
+  function actualizarItemPedido(tempId, cambios) {
+    setPedidoItemsEditando((prev) =>
+      prev.map((item) =>
+        item.temp_id === tempId
+          ? {
+              ...item,
+              ...cambios,
+            }
+          : item
+      )
+    );
+  }
+
+  function sumarCantidadItem(tempId) {
+    setPedidoItemsEditando((prev) =>
+      prev.map((item) =>
+        item.temp_id === tempId
+          ? { ...item, cantidad: Number(item.cantidad || 1) + 1 }
+          : item
+      )
+    );
+  }
+
+  function restarCantidadItem(tempId) {
+    setPedidoItemsEditando((prev) =>
+      prev
+        .map((item) =>
+          item.temp_id === tempId
+            ? { ...item, cantidad: Math.max(0, Number(item.cantidad || 1) - 1) }
+            : item
+        )
+        .filter((item) => Number(item.cantidad) > 0)
+    );
+  }
+
+  function eliminarItemPedido(tempId) {
+    setPedidoItemsEditando((prev) => prev.filter((item) => item.temp_id !== tempId));
+  }
+
+  function agregarProductoAlPedido() {
+    if (!platoAgregarPedidoId) return;
+
+    const plato = platos.find((p) => String(p.id) === String(platoAgregarPedidoId));
+    if (!plato) return;
+
+    setPedidoItemsEditando((prev) => [
+      ...prev,
+      {
+        temp_id: crypto.randomUUID(),
+        plato_id: plato.id,
+        nombre_producto: plato.nombre,
+        cantidad: 1,
+        precio_unitario: Number(plato.precio || 0),
+        observaciones: "",
+      },
+    ]);
+
+    setPlatoAgregarPedidoId("");
+  }
+
+  const subtotalPedidoEditando = pedidoItemsEditando.reduce(
+    (acc, item) =>
+      acc + Number(item.precio_unitario || 0) * Number(item.cantidad || 0),
+    0
+  );
+
+  const totalPedidoEditando =
+    subtotalPedidoEditando + Number(pedidoForm.costo_envio || 0);
+
+  async function guardarEdicionPedido() {
+    if (!pedidoEditando) return;
+
+    const itemsValidos = pedidoItemsEditando
+      .filter((item) => Number(item.cantidad) > 0)
+      .map((item) => ({
+        plato_id: item.plato_id || null,
+        nombre_producto: item.nombre_producto,
+        cantidad: Number(item.cantidad || 1),
+        precio_unitario: Number(item.precio_unitario || 0),
+        observaciones: item.observaciones || null,
+      }));
+
+    if (itemsValidos.length === 0) {
+      alert("El pedido debe tener al menos un producto");
+      return;
+    }
+
+    try {
+      await api.patch(
+        `/admin/pedidos/${pedidoEditando.id}`,
+        {
+          cliente_nombre: pedidoForm.cliente_nombre,
+          telefono: pedidoForm.telefono,
+          direccion: pedidoForm.direccion,
+          horario_entrega: pedidoForm.horario_entrega,
+          observaciones: pedidoForm.observaciones,
+          costo_envio: Number(pedidoForm.costo_envio || 0),
+        },
+        getAuthHeaders()
+      );
+
+      await api.patch(
+        `/admin/pedidos/${pedidoEditando.id}/items`,
+        {
+          items: itemsValidos,
+        },
+        getAuthHeaders()
+      );
+
+      cerrarModalPedido();
+      cargarTodo();
+    } catch (error) {
+      console.error("Error editando pedido:", error);
+      alert("Error editando pedido");
+    }
+  }
+
+  function agregarEnvioPedido(pedido) {
+    const costoEnvio = Number(pedido.costo_envio || configLocal.costo_envio_fijo || 0);
+
+    abrirModalEditarPedido({
+      ...pedido,
+      costo_envio: costoEnvio,
+    });
+  }
+
   async function cargarTodo() {
-    const [platosRes, categoriasRes, guarnicionesRes, horariosRes, configRes] =
-      await Promise.all([
-        api.get("/platos"),
-        api.get("/categorias"),
-        api.get("/guarniciones"),
-        api.get("/horarios"),
-        api.get("/admin/config", getAuthHeaders()),
-      ]);
+    const [
+      platosRes,
+      categoriasRes,
+      guarnicionesRes,
+      horariosRes,
+      configRes,
+      pedidosRes,
+    ] = await Promise.all([
+      api.get("/platos"),
+      api.get("/categorias"),
+      api.get("/guarniciones"),
+      api.get("/horarios"),
+      api.get("/admin/config", getAuthHeaders()),
+      api.get("/admin/pedidos", getAuthHeaders()),
+    ]);
 
     setPlatos(Array.isArray(platosRes.data) ? platosRes.data : []);
     setCategorias(Array.isArray(categoriasRes.data) ? categoriasRes.data : []);
     setGuarniciones(Array.isArray(guarnicionesRes.data) ? guarnicionesRes.data : []);
     setHorariosEntrega(Array.isArray(horariosRes.data) ? horariosRes.data : []);
+    setPedidos(Array.isArray(pedidosRes.data) ? pedidosRes.data : []);
 
     setConfigLocal({
       nombre: configRes.data?.nombre || "",
@@ -746,6 +1126,7 @@ function AdminPage() {
       logo_url: configRes.data?.logo_url || "",
       color_primario: configRes.data?.color_primario || "#2f4a3f",
       dominio_personalizado: configRes.data?.dominio_personalizado || "",
+      costo_envio_fijo: Number(configRes.data?.costo_envio_fijo || 0),
       activo: Boolean(configRes.data?.activo),
     });
   }
@@ -1092,6 +1473,8 @@ function AdminPage() {
           eliminarHorario={eliminarHorario}
         />
 
+
+
         <AdminPlatos
           mostrar={mostrarPlatos}
           setMostrar={setMostrarPlatos}
@@ -1111,8 +1494,362 @@ function AdminPage() {
           guardarPlato={guardarPlato}
           eliminarPlato={eliminarPlato}
         />
+
+        <AdminPedidosPanel
+          pedidos={pedidos}
+          cambiarEstadoPedido={cambiarEstadoPedido}
+          editarPedido={abrirModalEditarPedido}
+          agregarEnvioPedido={agregarEnvioPedido}
+        />
+
+        {pedidoEditando && (
+          <div className="modal-backdrop" onClick={cerrarModalPedido}>
+            <div className="pedido-modal" onClick={(e) => e.stopPropagation()}>
+              <div className="modal-header">
+                <h3>Editar pedido #{pedidoEditando.codigo}</h3>
+                <button type="button" onClick={cerrarModalPedido}>×</button>
+              </div>
+
+              <label>
+                Cliente
+                <input
+                  value={pedidoForm.cliente_nombre}
+                  onChange={(e) => setPedidoForm({ ...pedidoForm, cliente_nombre: e.target.value })}
+                />
+              </label>
+
+              <label>
+                Teléfono
+                <input
+                  value={pedidoForm.telefono}
+                  onChange={(e) => setPedidoForm({ ...pedidoForm, telefono: e.target.value })}
+                />
+              </label>
+
+              <label>
+                Dirección
+                <input
+                  value={pedidoForm.direccion}
+                  onChange={(e) => setPedidoForm({ ...pedidoForm, direccion: e.target.value })}
+                />
+              </label>
+
+              <label>
+                Horario
+                <input
+                  value={pedidoForm.horario_entrega}
+                  onChange={(e) => setPedidoForm({ ...pedidoForm, horario_entrega: e.target.value })}
+                />
+              </label>
+
+              <label>
+                Costo de envío
+                <input
+                  type="number"
+                  min="0"
+                  value={pedidoForm.costo_envio}
+                  onChange={(e) => setPedidoForm({ ...pedidoForm, costo_envio: e.target.value })}
+                />
+              </label>
+
+              <label>
+                Observaciones
+                <textarea
+                  value={pedidoForm.observaciones}
+                  onChange={(e) => setPedidoForm({ ...pedidoForm, observaciones: e.target.value })}
+                />
+              </label>
+
+              <div className="pedido-modal-items">
+                <h4>Productos</h4>
+
+                {pedidoItemsEditando.map((item) => (
+                  <div key={item.temp_id} className="pedido-item-editable">
+                    <div className="pedido-item-cantidad">
+                      <button type="button" onClick={() => restarCantidadItem(item.temp_id)}>
+                        -
+                      </button>
+
+                      <input
+                        type="number"
+                        min="1"
+                        value={item.cantidad}
+                        onChange={(e) =>
+                          actualizarItemPedido(item.temp_id, {
+                            cantidad: Number(e.target.value || 1),
+                          })
+                        }
+                      />
+
+                      <button type="button" onClick={() => sumarCantidadItem(item.temp_id)}>
+                        +
+                      </button>
+                    </div>
+
+                    <div className="pedido-item-datos">
+                      <input
+                        value={item.nombre_producto}
+                        onChange={(e) =>
+                          actualizarItemPedido(item.temp_id, {
+                            nombre_producto: e.target.value,
+                          })
+                        }
+                      />
+
+                      <input
+                        type="number"
+                        min="0"
+                        value={item.precio_unitario}
+                        onChange={(e) =>
+                          actualizarItemPedido(item.temp_id, {
+                            precio_unitario: Number(e.target.value || 0),
+                          })
+                        }
+                      />
+
+                      <input
+                        placeholder="Observación del producto"
+                        value={item.observaciones || ""}
+                        onChange={(e) =>
+                          actualizarItemPedido(item.temp_id, {
+                            observaciones: e.target.value,
+                          })
+                        }
+                      />
+
+                      <strong>
+                        Subtotal: ${formatMoney(
+                          Number(item.precio_unitario || 0) * Number(item.cantidad || 0)
+                        )}
+                      </strong>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="pedido-item-eliminar"
+                      onClick={() => eliminarItemPedido(item.temp_id)}
+                    >
+                      Eliminar
+                    </button>
+                  </div>
+                ))}
+
+                <div className="agregar-producto-pedido">
+                  <select
+                    value={platoAgregarPedidoId}
+                    onChange={(e) => setPlatoAgregarPedidoId(e.target.value)}
+                  >
+                    <option value="">Agregar producto</option>
+                    {platos.map((plato) => (
+                      <option key={plato.id} value={plato.id}>
+                        {plato.nombre} - ${formatMoney(plato.precio)}
+                      </option>
+                    ))}
+                  </select>
+
+                  <button type="button" onClick={agregarProductoAlPedido}>
+                    Agregar
+                  </button>
+                </div>
+
+                <div className="pedido-modal-totales">
+                  <p>Subtotal: ${formatMoney(subtotalPedidoEditando)}</p>
+                  <p>Envío: ${formatMoney(pedidoForm.costo_envio)}</p>
+                  <strong>Total: ${formatMoney(totalPedidoEditando)}</strong>
+                </div>
+              </div>
+
+              <div className="modal-actions">
+                <button type="button" onClick={guardarEdicionPedido}>Guardar cambios</button>
+                <button type="button" onClick={cerrarModalPedido}>Cancelar</button>
+              </div>
+            </div>
+          </div>
+        )}
+
       </main>
     </div>
+  );
+}
+
+
+// =====================================================
+// Admin: pedidos Kanban
+// =====================================================
+
+function AdminPedidosPanel({ pedidos, cambiarEstadoPedido, editarPedido, agregarEnvioPedido }) {
+  const [mostrarEntregados, setMostrarEntregados] = useState(false);
+  const [mostrarCancelados, setMostrarCancelados] = useState(false);
+  const [pedidoDetalleId, setPedidoDetalleId] = useState(null);
+
+  const pedidosPendientes = pedidos.filter(
+    (p) => p.estado === "pendiente_confirmacion"
+  );
+
+  const pedidosPreparacion = pedidos.filter(
+    (p) => p.estado === "en_preparacion"
+  );
+
+  const pedidosEnCamino = pedidos.filter(
+    (p) => p.estado === "en_camino"
+  );
+
+  const pedidosEntregados = pedidos.filter(
+    (p) => p.estado === "entregado"
+  );
+
+  const pedidosCancelados = pedidos.filter(
+    (p) => p.estado === "cancelado"
+  );
+
+  function PedidoCard({ pedido, children, compacto = false }) {
+    const abierto = pedidoDetalleId === pedido.id;
+
+    if (compacto && !abierto) {
+      return (
+        <button
+          type="button"
+          className="pedido-card pedido-card-compacta"
+          onClick={() => setPedidoDetalleId(pedido.id)}
+        >
+          <strong>#{pedido.codigo}</strong>
+          <span>{pedido.cliente_nombre}</span>
+          <span>${formatMoney(pedido.total)}</span>
+        </button>
+      );
+    }
+
+    return (
+      <div className={`pedido-card ${compacto ? "pedido-card-abierta" : ""}`}>
+        <div className="pedido-card-header">
+          <strong>#{pedido.codigo}</strong>
+          {compacto && (
+            <button type="button" onClick={() => setPedidoDetalleId(null)}>
+              Minimizar
+            </button>
+          )}
+        </div>
+
+        <p>{pedido.cliente_nombre}</p>
+        <small>{pedido.telefono}</small>
+        <small>{pedido.direccion}</small>
+        <small>Horario: {pedido.horario_entrega}</small>
+
+        {pedido.observaciones && <small>Obs: {pedido.observaciones}</small>}
+
+        {pedido.items?.map((item) => (
+          <div key={item.id} className="pedido-item-mini">
+            {item.cantidad}x {item.nombre_producto}
+          </div>
+        ))}
+
+        {Number(pedido.costo_envio || 0) > 0 && (
+          <small>Envío: ${formatMoney(pedido.costo_envio)}</small>
+        )}
+
+        <p><strong>Total: ${formatMoney(pedido.total)}</strong></p>
+
+        {!compacto && (
+          <>
+            <button type="button" onClick={() => editarPedido(pedido)}>
+              Editar
+            </button>
+
+            <button type="button" onClick={() => agregarEnvioPedido(pedido)}>
+              {Number(pedido.costo_envio || 0) > 0 ? "Editar envío" : "Agregar envío"}
+            </button>
+          </>
+        )}
+
+        <div className="pedido-actions">
+          {children}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <section className="admin-section pedidos-section">
+      <h2>Pedidos</h2>
+
+      <div className="kanban">
+        <div className="kanban-column">
+          <h3>Pendientes</h3>
+
+          {pedidosPendientes.map((pedido) => (
+            <PedidoCard key={pedido.id} pedido={pedido}>
+              <button onClick={() => cambiarEstadoPedido(pedido.id, "en_preparacion")}>
+                Confirmar
+              </button>
+
+              <button onClick={() => cambiarEstadoPedido(pedido.id, "cancelado")}>
+                Cancelar
+              </button>
+            </PedidoCard>
+          ))}
+        </div>
+
+        <div className="kanban-column">
+          <h3>Preparación</h3>
+
+          {pedidosPreparacion.map((pedido) => (
+            <PedidoCard key={pedido.id} pedido={pedido}>
+              <button onClick={() => cambiarEstadoPedido(pedido.id, "en_camino")}>
+                Pedido salió
+              </button>
+
+              <button onClick={() => cambiarEstadoPedido(pedido.id, "cancelado")}>
+                Cancelar
+              </button>
+            </PedidoCard>
+          ))}
+        </div>
+
+        <div className="kanban-column">
+          <h3>En camino</h3>
+
+          {pedidosEnCamino.map((pedido) => (
+            <PedidoCard key={pedido.id} pedido={pedido}>
+              <button onClick={() => cambiarEstadoPedido(pedido.id, "entregado")}>
+                Entregado
+              </button>
+            </PedidoCard>
+          ))}
+        </div>
+
+        <div className="kanban-column">
+          <button
+            type="button"
+            className="column-toggle"
+            onClick={() => setMostrarEntregados((v) => !v)}
+          >
+            <span>Entregados </span>
+            <strong>{pedidosEntregados.length}</strong>
+            <span>{mostrarEntregados ? " Ocultar" : " Ver"}</span>
+          </button>
+
+          {mostrarEntregados && pedidosEntregados.map((pedido) => (
+            <PedidoCard key={pedido.id} pedido={pedido} compacto />
+          ))}
+        </div>
+
+        <div className="kanban-column">
+          <button
+            type="button"
+            className="column-toggle"
+            onClick={() => setMostrarCancelados((v) => !v)}
+          >
+            <span>Cancelados </span>
+            <strong>{pedidosCancelados.length}</strong>
+            <span>{mostrarCancelados ? " Ocultar" : " Ver"}</span>
+          </button>
+
+          {mostrarCancelados && pedidosCancelados.map((pedido) => (
+            <PedidoCard key={pedido.id} pedido={pedido} compacto />
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -1180,7 +1917,21 @@ function AdminConfigLocal({
             }
           />
 
-           <label className="check-admin">
+
+          <input
+            type="number"
+            min="0"
+            placeholder="Costo de envío fijo"
+            value={configLocal.costo_envio_fijo}
+            onChange={(e) =>
+              setConfigLocal({
+                ...configLocal,
+                costo_envio_fijo: e.target.value,
+              })
+            }
+          />
+
+          <label className="check-admin">
             <input
               type="checkbox"
               checked={configLocal.activo}

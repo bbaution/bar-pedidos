@@ -1,4 +1,6 @@
 :root {
+  min-width: 100%;
+  margin: 0%;
   --green: #2f4a3f;
   --green-dark: #183429;
   --orange: #d46a3a;
@@ -8,6 +10,8 @@
   --muted: #6f6f6f;
   --border: #ece2d5;
   --shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  
+
 }
 
 * {
@@ -293,7 +297,7 @@ select {
 
 /* ADMIN */
 main:not(.layout) {
-  width: min(1180px, 94%);
+  width: min(1500px, 94%);
   margin: 24px auto;
 }
 
@@ -567,5 +571,312 @@ main:not(.layout) h2 {
 
   .contador-card button {
     color: var(--green-dark);
+  }
+}
+
+/* =========================================================
+   ITEMS MODAL PEDIDO
+========================================================= */
+
+.pedido-modal-items {
+  margin-top: 20px;
+}
+
+.pedido-modal-item {
+  border: 1px solid #e4e4e4;
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 16px;
+  background: #fafafa;
+}
+.agregar-producto-pedido>button {
+  width: 100%;
+  border: none;
+  background: #000000;
+  color: white;
+  border-radius: 10px;
+  padding: 10px;
+  margin-top: 12px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  font-weight: 700;
+}
+.pedido-item-cantidad {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.pedido-item-cantidad button {
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 10px;
+  background: #111;
+  color: white;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: .2s;
+}
+
+.pedido-item-cantidad button:hover {
+  opacity: .9;
+}
+
+.pedido-item-cantidad span {
+  min-width: 20px;
+  text-align: center;
+  font-weight: 700;
+}
+
+.pedido-modal-item input,
+.pedido-modal-item textarea,
+.pedido-modal-item select {
+  width: 100%;
+  margin-top: 8px;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  padding: 10px;
+  background: white;
+}
+
+.pedido-modal-item textarea {
+  resize: vertical;
+  min-height: 70px;
+}
+
+.pedido-item-subtotal {
+  margin-top: 10px;
+  font-weight: 700;
+  color: #2f4a3f;
+}
+
+.pedido-item-eliminar {
+  width: 100%;
+  border: none;
+  background: #e53935;
+  color: white;
+  border-radius: 10px;
+  padding: 10px;
+  margin-top: 12px;
+  margin-bottom: 12px;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.pedido-item-eliminar:hover {
+  opacity: .9;
+}
+
+.pedido-add-producto {
+  margin-top: 20px;
+  padding-top: 15px;
+  border-top: 1px solid #ddd;
+}
+
+.pedido-add-producto select {
+  width: 100%;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.pedido-add-producto button {
+  width: 100%;
+  margin-top: 10px;
+  border: none;
+  border-radius: 10px;
+  padding: 12px;
+  background: #2f4a3f;
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.pedido-total-box {
+  margin-top: 20px;
+  padding-top: 15px;
+  border-top: 2px solid #ddd;
+}
+
+.pedido-total-box p {
+  margin: 5px 0;
+}
+
+.pedido-total-final {
+  font-size: 22px;
+  font-weight: 800;
+  color: #2f4a3f;
+}
+
+/* =========================================================
+   MODAL
+========================================================= */
+.modal-backdrop {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 99999 !important;
+  background: rgba(0, 0, 0, 0.712) !important;
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  padding: 20px !important;
+}
+
+.pedido-modal {
+  width: 100% !important;
+  max-width: 520px !important;
+  max-height: 85vh !important;
+  overflow-y: auto !important;
+  background: #fff !important;
+  border-radius: 18px !important;
+  padding: 22px !important;
+  box-shadow: 0 20px 60px rgba(0,0,0,.35) !important;
+  position: relative !important;
+}
+
+.pedido-modal * {
+  box-sizing: border-box;
+}
+
+.pedido-modal-header {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  margin-bottom: 18px !important;
+}
+
+.pedido-modal label {
+  display: block !important;
+  margin: 10px 0 5px !important;
+  font-weight: 700 !important;
+  font-size: 13px !important;
+}
+
+.pedido-modal input,
+.pedido-modal textarea {
+  width: 100% !important;
+  margin: 0 !important;
+  display: block !important;
+  border: 1px solid #ddd !important;
+  border-radius: 10px !important;
+  padding: 10px !important;
+  background: #fff !important;
+}
+
+.modal-actions {
+  display: flex !important;
+  gap: 10px !important;
+  margin-top: 18px !important;
+}
+
+.modal-actions button {
+  flex: 1 !important;
+  padding: 12px !important;
+  border-radius: 10px !important;
+  border: none !important;
+  font-weight: 700 !important;
+}
+
+/* =========================================================
+   TRACKING PEDIDO - CLIENTE
+========================================================= */
+
+.tracking-page {
+  min-height: 100vh;
+  background: #fff7ef;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 24px 14px;
+}
+
+.tracking-card {
+  width: 100%;
+  max-width: 460px;
+  background: #ffffff;
+  border-radius: 22px;
+  padding: 24px;
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.08);
+}
+
+.tracking-card h1 {
+  font-size: 28px;
+  margin: 0 0 8px;
+  text-align: center;
+  color: #2f4a3f;
+}
+
+.tracking-card h2 {
+  font-size: 18px;
+  margin: 0 auto 22px;
+  text-align: center;
+  background: #eaf3ee;
+  color: #2f4a3f;
+  padding: 10px 14px;
+  border-radius: 999px;
+  width: fit-content;
+}
+
+.tracking-card p {
+  margin: 8px 0;
+  font-size: 15px;
+}
+
+.tracking-card strong {
+  color: #2f4a3f;
+}
+
+.tracking-card h3 {
+  margin-top: 26px;
+  margin-bottom: 12px;
+  text-align: center;
+  color: #2f4a3f;
+}
+
+.tracking-item {
+  background: #fff7ef;
+  border: 1px solid #f1e2d1;
+  border-radius: 14px;
+  padding: 14px;
+  margin-bottom: 10px;
+  font-size: 15px;
+}
+
+.tracking-admin-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.tracking-admin-actions button {
+  flex: 1;
+  border: none;
+  border-radius: 12px;
+  padding: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.tracking-admin-actions button:first-child {
+  background: #2f4a3f;
+  color: white;
+}
+
+.tracking-admin-actions button:last-child {
+  background: #ef3b32;
+  color: white;
+}
+
+@media (max-width: 480px) {
+  .tracking-card {
+    padding: 20px;
+    border-radius: 18px;
+  }
+
+  .tracking-card h1 {
+    font-size: 24px;
   }
 }

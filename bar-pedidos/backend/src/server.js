@@ -9,8 +9,12 @@ const app = express();
 app.use(
   cors({
     origin: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "ngrok-skip-browser-warning"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "ngrok-skip-browser-warning",
+    ],
     credentials: false,
   })
 );
@@ -670,6 +674,488 @@ app.put("/api/admin/config", auth, async (req, res) => {
 });
 
 /* =========================================================
+   PEDIDOS
+========================================================= */
+
+function generarCodigoPedido() {
+  const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+  return `${Date.now().toString().slice(-4)}-${random}`;
+}
+
+/* =========================================================
+   CREAR PEDIDO
+========================================================= */
+
+app.post("/api/pedidos", async (req, res) => {
+  try {
+    const {
+      cliente_nombre,
+      telefono,
+      direccion,
+      horario_entrega,
+      observaciones,
+      items,
+    } = req.body;
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({
+        error: "El pedido no tiene productos",
+      });
+    }
+
+    let subtotal = 0;
+
+    for (const item of items) {
+      subtotal += Number(item.precio) * Number(item.cantidad);
+    }
+
+    const codigo = generarCodigoPedido();
+
+    const [result] = await pool.query(
+      `INSERT INTO pedidos (
+        codigo,
+        cliente_nombre,
+        telefono,
+        direccion,
+        horario_entrega,
+        estado,
+        subtotal,
+        total,
+        observaciones
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        codigo,
+        cliente_nombre,
+        telefono,
+        direccion,
+        horario_entrega,
+        "pendiente_confirmacion",
+        subtotal,
+        subtotal,
+        observaciones || null,
+      ]
+    );
+
+    const pedidoId = result.insertId;
+
+    for (const item of items) {
+      await pool.query(
+        `INSERT INTO pedido_items (
+          pedido_id,
+          plato_id,
+          nombre_producto,
+          cantidad,
+          precio_unitario,
+          subtotal,
+          observaciones
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          pedidoId,
+          item.plato_id || null,
+          item.nombre,
+          item.cantidad,
+          item.precio,
+          Number(item.precio) * Number(item.cantidad),
+          item.observaciones || null,
+        ]
+      );
+    }
+
+    await pool.query(
+      `INSERT INTO pedido_historial (
+        pedido_id,
+        estado_nuevo,
+        detalle
+      )
+      VALUES (?, ?, ?)`,
+      [
+        pedidoId,
+        "pendiente_confirmacion",
+        "Pedido creado",
+      ]
+    );
+    const io = req.app.get("io");
+
+    if (io) {
+      io.emit("pedido_nuevo", {
+        id: pedidoId,
+        codigo,
+        estado: "pendiente_confirmacion",
+        subtotal,
+        total: subtotal,
+      });
+    }
+
+    res.json({
+      ok: true,
+      pedido: {
+        id: pedidoId,
+        codigo,
+        estado: "pendiente_confirmacion",
+        subtotal,
+        total: subtotal,
+      },
+    });
+  } catch (error) {
+    console.error("Error creando pedido:", error);
+    res.status(500).json({
+      error: "Error creando pedido",
+    });
+  }
+});
+
+/* =========================================================
+   OBTENER PEDIDO PÚBLICO
+========================================================= */
+
+app.get("/api/pedidos/:codigo", async (req, res) => {
+  try {
+    const { codigo } = req.params;
+
+    const [pedidos] = await pool.query(
+      `SELECT *
+       FROM pedidos
+       WHERE codigo = ?
+       LIMIT 1`,
+      [codigo]
+    );
+
+    const pedido = pedidos[0];
+
+    if (!pedido) {
+      return res.status(404).json({
+        error: "Pedido no encontrado",
+      });
+    }
+
+    const [items] = await pool.query(
+      `SELECT *
+       FROM pedido_items
+       WHERE pedido_id = ?`,
+      [pedido.id]
+    );
+
+    res.json({
+      ...pedido,
+      items,
+    });
+  } catch (error) {
+    console.error("Error obteniendo pedido:", error);
+
+    res.status(500).json({
+      error: "Error obteniendo pedido",
+    });
+  }
+});
+
+/* =========================================================
+   ADMIN: LISTAR PEDIDOS
+========================================================= */
+
+app.get("/api/admin/pedidos", auth, async (req, res) => {
+  try {
+    const [pedidos] = await pool.query(
+      `SELECT *
+       FROM pedidos
+       ORDER BY creado_en DESC`
+    );
+
+    for (const pedido of pedidos) {
+      const [items] = await pool.query(
+        `SELECT *
+         FROM pedido_items
+         WHERE pedido_id = ?`,
+        [pedido.id]
+      );
+
+      pedido.items = items;
+    }
+
+    res.json(pedidos);
+  } catch (error) {
+    console.error("Error cargando pedidos:", error);
+
+    res.status(500).json({
+      error: "Error cargando pedidos",
+    });
+  }
+});
+
+/* =========================================================
+   ADMIN: CAMBIAR ESTADO
+========================================================= */
+
+app.patch("/api/admin/pedidos/:id/estado", auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { estado } = req.body;
+
+    const estadosValidos = [
+      "pendiente_confirmacion",
+      "en_preparacion",
+      "en_camino",
+      "entregado",
+      "cancelado",
+    ];
+
+    if (!estadosValidos.includes(estado)) {
+      return res.status(400).json({
+        error: "Estado inválido",
+      });
+    }
+
+    const [pedidos] = await pool.query(
+      `SELECT *
+       FROM pedidos
+       WHERE id = ?
+       LIMIT 1`,
+      [id]
+    );
+
+    const pedido = pedidos[0];
+
+    if (!pedido) {
+      return res.status(404).json({
+        error: "Pedido no encontrado",
+      });
+    }
+
+    await pool.query(
+      `UPDATE pedidos
+       SET estado = ?
+       WHERE id = ?`,
+      [estado, id]
+    );
+
+    await pool.query(
+      `INSERT INTO pedido_historial (
+        pedido_id,
+        estado_anterior,
+        estado_nuevo,
+        detalle
+      )
+      VALUES (?, ?, ?, ?)`,
+      [
+        id,
+        pedido.estado,
+        estado,
+        `Estado actualizado a ${estado}`,
+      ]
+    );
+
+    res.json({
+      ok: true,
+    });
+  } catch (error) {
+    console.error("Error actualizando estado:", error);
+
+    res.status(500).json({
+      error: "Error actualizando estado",
+    });
+  }
+});
+
+/* =========================================================
+   ADMIN: EDITAR PEDIDO
+========================================================= */
+
+app.patch("/api/admin/pedidos/:id", auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const {
+      cliente_nombre,
+      telefono,
+      direccion,
+      horario_entrega,
+      observaciones,
+      costo_envio,
+    } = req.body;
+
+    const [pedidos] = await pool.query(
+      `SELECT *
+       FROM pedidos
+       WHERE id = ?
+       LIMIT 1`,
+      [id]
+    );
+
+    const pedido = pedidos[0];
+
+    if (!pedido) {
+      return res.status(404).json({
+        error: "Pedido no encontrado",
+      });
+    }
+
+    const envio = Number(costo_envio || 0);
+
+    const total = Number(pedido.subtotal) + envio;
+
+    await pool.query(
+      `UPDATE pedidos
+       SET cliente_nombre = ?,
+           telefono = ?,
+           direccion = ?,
+           horario_entrega = ?,
+           observaciones = ?,
+           costo_envio = ?,
+           total = ?
+       WHERE id = ?`,
+      [
+        cliente_nombre,
+        telefono,
+        direccion,
+        horario_entrega,
+        observaciones,
+        envio,
+        total,
+        id,
+      ]
+    );
+
+    await pool.query(
+      `INSERT INTO pedido_historial (
+        pedido_id,
+        detalle
+      )
+      VALUES (?, ?)`,
+      [
+        id,
+        "Pedido editado manualmente",
+      ]
+    );
+
+    res.json({
+      ok: true,
+    });
+  } catch (error) {
+    console.error("Error editando pedido:", error);
+
+    res.status(500).json({
+      error: "Error editando pedido",
+    });
+  }
+});
+
+app.patch("/api/admin/pedidos/:id/items", auth, async (req, res) => {
+  const connection = await pool.getConnection();
+
+  try {
+    const { id } = req.params;
+    const { items } = req.body;
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({
+        error: "El pedido debe tener al menos un producto",
+      });
+    }
+
+    await connection.beginTransaction();
+
+    const [pedidos] = await connection.query(
+      `SELECT *
+       FROM pedidos
+       WHERE id = ?
+       LIMIT 1`,
+      [id]
+    );
+
+    const pedido = pedidos[0];
+
+    if (!pedido) {
+      await connection.rollback();
+      return res.status(404).json({
+        error: "Pedido no encontrado",
+      });
+    }
+
+    await connection.query(
+      `DELETE FROM pedido_items
+       WHERE pedido_id = ?`,
+      [id]
+    );
+
+    let subtotal = 0;
+
+    for (const item of items) {
+      const cantidad = Number(item.cantidad || 1);
+      const precio = Number(item.precio_unitario || item.precio || 0);
+      const itemSubtotal = cantidad * precio;
+
+      subtotal += itemSubtotal;
+
+      await connection.query(
+        `INSERT INTO pedido_items (
+          pedido_id,
+          plato_id,
+          nombre_producto,
+          cantidad,
+          precio_unitario,
+          subtotal,
+          observaciones
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          item.plato_id || null,
+          item.nombre_producto || item.nombre,
+          cantidad,
+          precio,
+          itemSubtotal,
+          item.observaciones || null,
+        ]
+      );
+    }
+
+    const costoEnvio = Number(pedido.costo_envio || 0);
+    const total = subtotal + costoEnvio;
+
+    await connection.query(
+      `UPDATE pedidos
+       SET subtotal = ?,
+           total = ?
+       WHERE id = ?`,
+      [subtotal, total, id]
+    );
+
+    await connection.query(
+      `INSERT INTO pedido_historial (
+        pedido_id,
+        detalle
+      )
+      VALUES (?, ?)`,
+      [id, "Productos del pedido editados"]
+    );
+
+    await connection.commit();
+
+    const io = req.app.get("io");
+    if (io) {
+      io.emit("pedido_actualizado");
+    }
+
+    res.json({
+      ok: true,
+      subtotal,
+      total,
+    });
+  } catch (error) {
+    await connection.rollback();
+
+    console.error("Error editando items del pedido:", error);
+
+    res.status(500).json({
+      error: "Error editando productos del pedido",
+    });
+  } finally {
+    connection.release();
+  }
+});
+
+/* =========================================================
    HEALTHCHECK
 ========================================================= */
 
@@ -684,8 +1170,30 @@ app.get("/api/health", async (req, res) => {
    SERVER
 ========================================================= */
 
+const http = require("http");
+const { Server } = require("socket.io");
+
 const PORT = process.env.PORT || 4000;
 
-app.listen(PORT, () => {
+const server = http.createServer(app);
+
+const io = new Server(server, {
+  cors: {
+    origin: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
+  },
+});
+
+app.set("io", io);
+
+io.on("connection", (socket) => {
+  console.log("Cliente conectado a sockets:", socket.id);
+
+  socket.on("disconnect", () => {
+    console.log("Cliente desconectado:", socket.id);
+  });
+});
+
+server.listen(PORT, () => {
   console.log(`Backend listo en puerto ${PORT}`);
 });
