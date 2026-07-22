@@ -452,98 +452,132 @@ input[type="color"] {
   }
 }
 
+.carrito-flotante {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  z-index: 1000;
 
+  width: min(680px, calc(100% - 28px));
+  transform: translateX(-50%);
 
-/* =====================================================
-   Layout público
-===================================================== */
-
-.layout {
-  width: min(1200px, calc(100% - 32px));
-  margin: 32px auto;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 380px;
-  gap: 28px;
-  align-items: start;
+  grid-template-columns: minmax(110px, auto) minmax(180px, 1fr);
+  align-items: center;
+  gap: 18px;
+
+  padding: 14px 16px;
+
+  background: var(--card);
+  border: 1px solid rgba(47, 74, 63, 0.18);
+  border-radius: 22px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.18);
+
+  animation: aparecer-carrito 0.28s ease-out;
 }
 
-.layout > section {
-  min-width: 0;
-  grid-column: 1;
+.carrito-flotante-info {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  line-height: 1.2;
+}
+
+.carrito-flotante-info strong {
+  color: var(--green-dark);
+  font-size: 22px;
+}
+
+.carrito-flotante-info span {
+  color: var(--muted);
+  font-size: 14px;
+  margin-top: 4px;
+}
+
+.carrito-flotante button {
+  width: 100%;
+  min-height: 52px;
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 9px;
+
+  border: 0;
+  border-radius: 999px;
+
+  background: var(--green);
+  color: white;
+
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+
+  transition:
+    transform 0.18s ease,
+    background 0.18s ease;
+}
+
+.carrito-flotante button:hover {
+  background: var(--green-dark);
+  transform: translateY(-1px);
 }
 
 .carrito {
-  grid-column: 2;
-  grid-row: 1;
-  width: 100%;
-  position: sticky;
-  top: 24px;
-  max-height: calc(100vh - 48px);
-  overflow-y: auto;
-  box-sizing: border-box;
+  scroll-margin-top: 24px;
 }
 
-/* El menú queda dentro de su columna */
-.menu-header {
-  width: 100%;
-  max-width: 100%;
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  background: var(--bg);
-  padding: 12px 0;
-  overflow: hidden;
+.carrito-resaltado {
+  animation: resaltar-carrito 0.9s ease;
 }
 
-.category-slider {
-  width: 100%;
-  max-width: 100%;
-  display: flex;
-  flex-wrap: nowrap;
-  gap: 10px;
-  overflow-x: auto;
-  overflow-y: hidden;
-  padding: 6px 0 10px;
-  scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
-}
-
-.category-slider::-webkit-scrollbar {
-  display: none;
-}
-
-.category-slider button {
-  flex: 0 0 auto;
-  white-space: nowrap;
-}
-
-/* =====================================================
-   Tablet y celular
-===================================================== */
-
-@media (max-width: 900px) {
-  .layout {
-    width: min(100% - 20px, 720px);
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-    margin-top: 20px;
+@keyframes aparecer-carrito {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 18px);
   }
 
-  .carrito {
-    order: 1;
-    width: 100%;
-    position: static;
-    max-height: none;
-    overflow: visible;
-  }
-
-  .layout > section {
-    order: 2;
-    width: 100%;
-  }
-
-  .menu-header {
-    top: 0;
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
   }
 }
+
+@keyframes resaltar-carrito {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  45% {
+    transform: scale(1.015);
+    box-shadow: 0 0 0 5px rgba(47, 74, 63, 0.14);
+  }
+}
+
+@media (max-width: 560px) {
+  .carrito-flotante {
+    bottom: 10px;
+    grid-template-columns: 105px minmax(0, 1fr);
+    gap: 10px;
+    padding: 11px;
+    border-radius: 18px;
+  }
+
+  .carrito-flotante-info strong {
+    font-size: 19px;
+  }
+
+  .carrito-flotante-info span {
+    font-size: 12px;
+  }
+
+  .carrito-flotante button {
+    min-height: 48px;
+    font-size: 14px;
+  }
+}
+.app {
+  padding-bottom: 110px;
+}
+

@@ -4,7 +4,7 @@
 // Frontend público + login admin + panel admin
 // =====================================================
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, Route, Routes, useNavigate, useParams } from "react-router-dom";
 import "./App.css";
 import logo from "./assets/maikai-logo.png";
@@ -266,6 +266,8 @@ function HomePage() {
   const [horarios, setHorarios] = useState([]);
   const [carrito, setCarrito] = useState([]);
   const [config, setConfig] = useState(null);
+  const carritoRef = useRef(null);
+  const [resaltarCarrito, setResaltarCarrito] = useState(false);
 
   const [form, setForm] = useState({
     nombre: "",
@@ -333,6 +335,12 @@ function HomePage() {
   const total = useMemo(() => {
     return carrito.reduce(
       (acc, item) => acc + Number(item.precio) * item.cantidad,
+      0
+    );
+  }, [carrito]);
+  const cantidadProductos = useMemo(() => {
+    return carrito.reduce(
+      (acc, item) => acc + Number(item.cantidad || 0),
       0
     );
   }, [carrito]);
@@ -452,6 +460,18 @@ Total: $${formatMoney(pedidoCreado.total || total)}`;
       alert("No se pudo crear el pedido. Intentá nuevamente.");
     }
   }
+  function irAlCarrito() {
+    carritoRef.current?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+
+    setResaltarCarrito(true);
+
+    setTimeout(() => {
+      setResaltarCarrito(false);
+    }, 900);
+  }
 
   return (
     <div className="app">
@@ -459,7 +479,62 @@ Total: $${formatMoney(pedidoCreado.total || total)}`;
 
       <main className="layout">
         <section>
-          <aside className="carrito">
+
+          <div className="menu-header">
+            <h2>Nuestro menú</h2>
+
+            <div className="category-slider">
+              {Object.keys(platosPorCategoria).map((categoria) => (
+                <button
+                  key={categoria}
+                  onClick={() => {
+                    const el = document.getElementById(
+                      `cat-${categoria.replace(/\s+/g, "-").toLowerCase()}`
+                    );
+
+                    if (el) {
+                      el.scrollIntoView({
+                        behavior: "smooth",
+                        block: "start",
+                      });
+                    }
+                  }}
+                >
+                  {categoria}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {Object.entries(platosPorCategoria).map(
+            ([categoria, platosCategoria]) => (
+              <div
+                className="categoria-menu"
+                key={categoria}
+                id={`cat-${categoria.replace(/\s+/g, "-").toLowerCase()}`}
+              >
+                <h3>{categoria}</h3>
+
+                <div className="grid">
+                  {platosCategoria.map((plato) => (
+                    <PlatoCard
+                      key={plato.id}
+                      plato={plato}
+                      carrito={carrito}
+                      setCarrito={setCarrito}
+                      agregarAlCarrito={agregarAlCarrito}
+                    />
+                  ))}
+                </div>
+              </div>
+            )
+          )}
+        </section>
+        <aside
+          ref={carritoRef}
+          id="carrito"
+          className={`carrito ${resaltarCarrito ? "carrito-resaltado" : ""}`}
+        >
           <h2>
             <ShoppingCart size={24} />
             Carrito
@@ -565,59 +640,29 @@ Total: $${formatMoney(pedidoCreado.total || total)}`;
             Pedir por WhatsApp
           </button>
         </aside>
-          <div className="menu-header">
-            <h2>Nuestro menú</h2>
 
-            <div className="category-slider">
-              {Object.keys(platosPorCategoria).map((categoria) => (
-                <button
-                  key={categoria}
-                  onClick={() => {
-                    const el = document.getElementById(
-                      `cat-${categoria.replace(/\s+/g, "-").toLowerCase()}`
-                    );
+      </main>
 
-                    if (el) {
-                      el.scrollIntoView({
-                        behavior: "smooth",
-                        block: "start",
-                      });
-                    }
-                  }}
-                >
-                  {categoria}
-                </button>
-              ))}
-            </div>
+      {carrito.length > 0 && (
+        <div className="carrito-flotante">
+          <div className="carrito-flotante-info">
+            <strong>${formatMoney(total)}</strong>
+
+            <span>
+              {cantidadProductos}{" "}
+              {cantidadProductos === 1 ? "producto" : "productos"}
+            </span>
           </div>
 
-          {Object.entries(platosPorCategoria).map(
-            ([categoria, platosCategoria]) => (
-              <div
-                className="categoria-menu"
-                key={categoria}
-                id={`cat-${categoria.replace(/\s+/g, "-").toLowerCase()}`}
-              >
-                <h3>{categoria}</h3>
-
-                <div className="grid">
-                  {platosCategoria.map((plato) => (
-                    <PlatoCard
-                      key={plato.id}
-                      plato={plato}
-                      carrito={carrito}
-                      setCarrito={setCarrito}
-                      agregarAlCarrito={agregarAlCarrito}
-                    />
-                  ))}
-                </div>
-              </div>
-            )
-          )}
-        </section>
-
-        
-      </main>
+          <button
+            type="button"
+            onClick={irAlCarrito}
+          >
+            <ShoppingCart size={18} />
+            Ver carrito
+          </button>
+        </div>
+      )}
     </div>
   );
 }
