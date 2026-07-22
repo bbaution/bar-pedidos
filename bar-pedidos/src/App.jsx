@@ -459,58 +459,7 @@ Total: $${formatMoney(pedidoCreado.total || total)}`;
 
       <main className="layout">
         <section>
-          <div className="menu-header">
-            <h2>Nuestro menú</h2>
-
-            <div className="category-slider">
-              {Object.keys(platosPorCategoria).map((categoria) => (
-                <button
-                  key={categoria}
-                  onClick={() => {
-                    const el = document.getElementById(
-                      `cat-${categoria.replace(/\s+/g, "-").toLowerCase()}`
-                    );
-
-                    if (el) {
-                      el.scrollIntoView({
-                        behavior: "smooth",
-                        block: "start",
-                      });
-                    }
-                  }}
-                >
-                  {categoria}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {Object.entries(platosPorCategoria).map(
-            ([categoria, platosCategoria]) => (
-              <div
-                className="categoria-menu"
-                key={categoria}
-                id={`cat-${categoria.replace(/\s+/g, "-").toLowerCase()}`}
-              >
-                <h3>{categoria}</h3>
-
-                <div className="grid">
-                  {platosCategoria.map((plato) => (
-                    <PlatoCard
-                      key={plato.id}
-                      plato={plato}
-                      carrito={carrito}
-                      setCarrito={setCarrito}
-                      agregarAlCarrito={agregarAlCarrito}
-                    />
-                  ))}
-                </div>
-              </div>
-            )
-          )}
-        </section>
-
-        <aside className="carrito">
+          <aside className="carrito">
           <h2>
             <ShoppingCart size={24} />
             Carrito
@@ -616,6 +565,58 @@ Total: $${formatMoney(pedidoCreado.total || total)}`;
             Pedir por WhatsApp
           </button>
         </aside>
+          <div className="menu-header">
+            <h2>Nuestro menú</h2>
+
+            <div className="category-slider">
+              {Object.keys(platosPorCategoria).map((categoria) => (
+                <button
+                  key={categoria}
+                  onClick={() => {
+                    const el = document.getElementById(
+                      `cat-${categoria.replace(/\s+/g, "-").toLowerCase()}`
+                    );
+
+                    if (el) {
+                      el.scrollIntoView({
+                        behavior: "smooth",
+                        block: "start",
+                      });
+                    }
+                  }}
+                >
+                  {categoria}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {Object.entries(platosPorCategoria).map(
+            ([categoria, platosCategoria]) => (
+              <div
+                className="categoria-menu"
+                key={categoria}
+                id={`cat-${categoria.replace(/\s+/g, "-").toLowerCase()}`}
+              >
+                <h3>{categoria}</h3>
+
+                <div className="grid">
+                  {platosCategoria.map((plato) => (
+                    <PlatoCard
+                      key={plato.id}
+                      plato={plato}
+                      carrito={carrito}
+                      setCarrito={setCarrito}
+                      agregarAlCarrito={agregarAlCarrito}
+                    />
+                  ))}
+                </div>
+              </div>
+            )
+          )}
+        </section>
+
+        
       </main>
     </div>
   );
