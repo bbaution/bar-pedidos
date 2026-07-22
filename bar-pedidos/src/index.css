@@ -452,8 +452,98 @@ input[type="color"] {
   }
 }
 
-.carrito-top{
-    position: sticky;
+
+
+/* =====================================================
+   Layout público
+===================================================== */
+
+.layout {
+  width: min(1200px, calc(100% - 32px));
+  margin: 32px auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 28px;
+  align-items: start;
+}
+
+.layout > section {
+  min-width: 0;
+  grid-column: 1;
+}
+
+.carrito {
+  grid-column: 2;
+  grid-row: 1;
+  width: 100%;
+  position: sticky;
+  top: 24px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+/* El menú queda dentro de su columna */
+.menu-header {
+  width: 100%;
+  max-width: 100%;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--bg);
+  padding: 12px 0;
+  overflow: hidden;
+}
+
+.category-slider {
+  width: 100%;
+  max-width: 100%;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 6px 0 10px;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.category-slider::-webkit-scrollbar {
+  display: none;
+}
+
+.category-slider button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* =====================================================
+   Tablet y celular
+===================================================== */
+
+@media (max-width: 900px) {
+  .layout {
+    width: min(100% - 20px, 720px);
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    margin-top: 20px;
+  }
+
+  .carrito {
+    order: 1;
+    width: 100%;
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .layout > section {
+    order: 2;
+    width: 100%;
+  }
+
+  .menu-header {
     top: 0;
-    z-index: 100;
+  }
 }
