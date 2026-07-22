@@ -977,6 +977,94 @@ function AdminPage() {
       alert("Error actualizando pedido");
     }
   }
+  async function archivarPedido(pedido) {
+    const textoEstado =
+      pedido.estado === "entregado" ? "entregado" : "cancelado";
+
+    const ok = confirm(
+      `¿Archivar el pedido #${pedido.codigo}?\n\nEl pedido ${textoEstado} dejará de aparecer en el panel, pero seguirá guardado para futuras estadísticas.`
+    );
+
+    if (!ok) return;
+
+    try {
+      await api.patch(
+        `/admin/pedidos/${pedido.id}/archivar`,
+        {},
+        getAuthHeaders()
+      );
+
+      cargarTodo();
+    } catch (error) {
+      console.error("Error archivando pedido:", error);
+
+      alert(
+        error.response?.data?.error ||
+        "No se pudo archivar el pedido"
+      );
+    }
+  }
+
+  async function limpiarPedidosFinalizados() {
+    const finalizados = pedidos.filter(
+      (pedido) =>
+        pedido.estado === "entregado" ||
+        pedido.estado === "cancelado"
+    );
+
+    if (finalizados.length === 0) {
+      alert("No hay pedidos finalizados para limpiar.");
+      return;
+    }
+
+    const entregados = finalizados.filter(
+      (pedido) => pedido.estado === "entregado"
+    ).length;
+
+    const cancelados = finalizados.filter(
+      (pedido) => pedido.estado === "cancelado"
+    ).length;
+
+    const detalle = [
+      entregados > 0
+        ? `${entregados} ${entregados === 1 ? "entregado" : "entregados"}`
+        : null,
+      cancelados > 0
+        ? `${cancelados} ${cancelados === 1 ? "cancelado" : "cancelados"}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(" y ");
+
+    const ok = confirm(
+      `¿Limpiar los pedidos finalizados?\n\nSe archivarán ${detalle}.\n\nNo se eliminarán de la base de datos.`
+    );
+
+    if (!ok) return;
+
+    try {
+      const { data } = await api.patch(
+        "/admin/archivar-pedidos-finalizados",
+        {},
+        getAuthHeaders()
+      );
+
+      await cargarTodo();
+
+      alert(
+        data.archivados === 1
+          ? "Se archivó 1 pedido."
+          : `Se archivaron ${data.archivados} pedidos.`
+      );
+    } catch (error) {
+      console.error("Error limpiando pedidos:", error);
+
+      alert(
+        error.response?.data?.error ||
+        "No se pudieron archivar los pedidos finalizados"
+      );
+    }
+  }
 
   function abrirModalEditarPedido(pedido) {
     setPedidoEditando(pedido);
@@ -1547,8 +1635,9 @@ function AdminPage() {
           cambiarEstadoPedido={cambiarEstadoPedido}
           editarPedido={abrirModalEditarPedido}
           agregarEnvioPedido={agregarEnvioPedido}
+          archivarPedido={archivarPedido}
+          limpiarPedidosFinalizados={limpiarPedidosFinalizados}
         />
-
         {pedidoEditando && (
           <div className="modal-backdrop" onClick={cerrarModalPedido}>
             <div className="pedido-modal" onClick={(e) => e.stopPropagation()}>
@@ -1724,45 +1813,78 @@ function AdminPage() {
 // Admin: pedidos Kanban
 // =====================================================
 
-function AdminPedidosPanel({ pedidos, cambiarEstadoPedido, editarPedido, agregarEnvioPedido }) {
+function AdminPedidosPanel({
+  pedidos,
+  cambiarEstadoPedido,
+  editarPedido,
+  agregarEnvioPedido,
+  archivarPedido,
+  limpiarPedidosFinalizados,
+}) {
   const [mostrarEntregados, setMostrarEntregados] = useState(false);
   const [mostrarCancelados, setMostrarCancelados] = useState(false);
   const [pedidoDetalleId, setPedidoDetalleId] = useState(null);
 
   const pedidosPendientes = pedidos.filter(
-    (p) => p.estado === "pendiente_confirmacion"
+    (pedido) => pedido.estado === "pendiente_confirmacion"
   );
 
   const pedidosPreparacion = pedidos.filter(
-    (p) => p.estado === "en_preparacion"
+    (pedido) => pedido.estado === "en_preparacion"
   );
 
   const pedidosEnCamino = pedidos.filter(
-    (p) => p.estado === "en_camino"
+    (pedido) => pedido.estado === "en_camino"
   );
 
   const pedidosEntregados = pedidos.filter(
-    (p) => p.estado === "entregado"
+    (pedido) => pedido.estado === "entregado"
   );
 
   const pedidosCancelados = pedidos.filter(
-    (p) => p.estado === "cancelado"
+    (pedido) => pedido.estado === "cancelado"
   );
+
+  const cantidadFinalizados =
+    pedidosEntregados.length + pedidosCancelados.length;
+
+  function manejarArchivado(event, pedido) {
+    event.stopPropagation();
+    archivarPedido(pedido);
+  }
 
   function PedidoCard({ pedido, children, compacto = false }) {
     const abierto = pedidoDetalleId === pedido.id;
 
+    const puedeArchivarse =
+      pedido.estado === "entregado" ||
+      pedido.estado === "cancelado";
+
     if (compacto && !abierto) {
       return (
-        <button
-          type="button"
-          className="pedido-card pedido-card-compacta"
-          onClick={() => setPedidoDetalleId(pedido.id)}
-        >
-          <strong>#{pedido.codigo}</strong>
-          <span>{pedido.cliente_nombre}</span>
-          <span>${formatMoney(pedido.total)}</span>
-        </button>
+        <div className="pedido-card-compacta-wrapper">
+          <button
+            type="button"
+            className="pedido-card pedido-card-compacta"
+            onClick={() => setPedidoDetalleId(pedido.id)}
+          >
+            <strong>#{pedido.codigo}</strong>
+            <span>{pedido.cliente_nombre}</span>
+            <span>${formatMoney(pedido.total)}</span>
+          </button>
+
+          {puedeArchivarse && (
+            <button
+              type="button"
+              className="pedido-archivar pedido-archivar-compacto"
+              onClick={(event) => manejarArchivado(event, pedido)}
+              aria-label={`Archivar pedido ${pedido.codigo}`}
+              title="Archivar pedido"
+            >
+              ×
+            </button>
+          )}
+        </div>
       );
     }
 
@@ -1770,19 +1892,40 @@ function AdminPedidosPanel({ pedidos, cambiarEstadoPedido, editarPedido, agregar
       <div className={`pedido-card ${compacto ? "pedido-card-abierta" : ""}`}>
         <div className="pedido-card-header">
           <strong>#{pedido.codigo}</strong>
-          {compacto && (
-            <button type="button" onClick={() => setPedidoDetalleId(null)}>
-              Minimizar
-            </button>
-          )}
+
+          <div className="pedido-card-header-actions">
+            {compacto && (
+              <button
+                type="button"
+                onClick={() => setPedidoDetalleId(null)}
+              >
+                Minimizar
+              </button>
+            )}
+
+            {puedeArchivarse && (
+              <button
+                type="button"
+                className="pedido-archivar"
+                onClick={(event) => manejarArchivado(event, pedido)}
+                aria-label={`Archivar pedido ${pedido.codigo}`}
+                title="Archivar pedido"
+              >
+                ×
+              </button>
+            )}
+          </div>
         </div>
 
         <p>{pedido.cliente_nombre}</p>
+
         <small>{pedido.telefono}</small>
         <small>{pedido.direccion}</small>
         <small>Horario: {pedido.horario_entrega}</small>
 
-        {pedido.observaciones && <small>Obs: {pedido.observaciones}</small>}
+        {pedido.observaciones && (
+          <small>Obs: {pedido.observaciones}</small>
+        )}
 
         {pedido.items?.map((item) => (
           <div key={item.id} className="pedido-item-mini">
@@ -1791,19 +1934,33 @@ function AdminPedidosPanel({ pedidos, cambiarEstadoPedido, editarPedido, agregar
         ))}
 
         {Number(pedido.costo_envio || 0) > 0 && (
-          <small>Envío: ${formatMoney(pedido.costo_envio)}</small>
+          <small>
+            Envío: ${formatMoney(pedido.costo_envio)}
+          </small>
         )}
 
-        <p><strong>Total: ${formatMoney(pedido.total)}</strong></p>
+        <p>
+          <strong>
+            Total: ${formatMoney(pedido.total)}
+          </strong>
+        </p>
 
         {!compacto && (
           <>
-            <button type="button" onClick={() => editarPedido(pedido)}>
+            <button
+              type="button"
+              onClick={() => editarPedido(pedido)}
+            >
               Editar
             </button>
 
-            <button type="button" onClick={() => agregarEnvioPedido(pedido)}>
-              {Number(pedido.costo_envio || 0) > 0 ? "Editar envío" : "Agregar envío"}
+            <button
+              type="button"
+              onClick={() => agregarEnvioPedido(pedido)}
+            >
+              {Number(pedido.costo_envio || 0) > 0
+                ? "Editar envío"
+                : "Agregar envío"}
             </button>
           </>
         )}
@@ -1817,19 +1974,59 @@ function AdminPedidosPanel({ pedidos, cambiarEstadoPedido, editarPedido, agregar
 
   return (
     <section className="admin-section pedidos-section">
-      <h2>Pedidos</h2>
+      <div className="pedidos-header">
+        <div>
+          <h2>Pedidos</h2>
+
+          <span className="pedidos-resumen">
+            {pedidosPendientes.length} pendientes ·{" "}
+            {pedidosPreparacion.length} en preparación ·{" "}
+            {pedidosEnCamino.length} en camino
+          </span>
+        </div>
+
+        {cantidadFinalizados > 0 && (
+          <button
+            type="button"
+            className="limpiar-finalizados"
+            onClick={limpiarPedidosFinalizados}
+          >
+            Limpiar finalizados ({cantidadFinalizados})
+          </button>
+        )}
+      </div>
 
       <div className="kanban">
         <div className="kanban-column">
           <h3>Pendientes</h3>
 
+          {pedidosPendientes.length === 0 && (
+            <p className="kanban-vacio">
+              No hay pedidos pendientes.
+            </p>
+          )}
+
           {pedidosPendientes.map((pedido) => (
             <PedidoCard key={pedido.id} pedido={pedido}>
-              <button onClick={() => cambiarEstadoPedido(pedido.id, "en_preparacion")}>
+              <button
+                onClick={() =>
+                  cambiarEstadoPedido(
+                    pedido.id,
+                    "en_preparacion"
+                  )
+                }
+              >
                 Confirmar
               </button>
 
-              <button onClick={() => cambiarEstadoPedido(pedido.id, "cancelado")}>
+              <button
+                onClick={() =>
+                  cambiarEstadoPedido(
+                    pedido.id,
+                    "cancelado"
+                  )
+                }
+              >
                 Cancelar
               </button>
             </PedidoCard>
@@ -1839,13 +2036,33 @@ function AdminPedidosPanel({ pedidos, cambiarEstadoPedido, editarPedido, agregar
         <div className="kanban-column">
           <h3>Preparación</h3>
 
+          {pedidosPreparacion.length === 0 && (
+            <p className="kanban-vacio">
+              No hay pedidos en preparación.
+            </p>
+          )}
+
           {pedidosPreparacion.map((pedido) => (
             <PedidoCard key={pedido.id} pedido={pedido}>
-              <button onClick={() => cambiarEstadoPedido(pedido.id, "en_camino")}>
+              <button
+                onClick={() =>
+                  cambiarEstadoPedido(
+                    pedido.id,
+                    "en_camino"
+                  )
+                }
+              >
                 Pedido salió
               </button>
 
-              <button onClick={() => cambiarEstadoPedido(pedido.id, "cancelado")}>
+              <button
+                onClick={() =>
+                  cambiarEstadoPedido(
+                    pedido.id,
+                    "cancelado"
+                  )
+                }
+              >
                 Cancelar
               </button>
             </PedidoCard>
@@ -1855,9 +2072,22 @@ function AdminPedidosPanel({ pedidos, cambiarEstadoPedido, editarPedido, agregar
         <div className="kanban-column">
           <h3>En camino</h3>
 
+          {pedidosEnCamino.length === 0 && (
+            <p className="kanban-vacio">
+              No hay pedidos en camino.
+            </p>
+          )}
+
           {pedidosEnCamino.map((pedido) => (
             <PedidoCard key={pedido.id} pedido={pedido}>
-              <button onClick={() => cambiarEstadoPedido(pedido.id, "entregado")}>
+              <button
+                onClick={() =>
+                  cambiarEstadoPedido(
+                    pedido.id,
+                    "entregado"
+                  )
+                }
+              >
                 Entregado
               </button>
             </PedidoCard>
@@ -1868,32 +2098,66 @@ function AdminPedidosPanel({ pedidos, cambiarEstadoPedido, editarPedido, agregar
           <button
             type="button"
             className="column-toggle"
-            onClick={() => setMostrarEntregados((v) => !v)}
+            onClick={() =>
+              setMostrarEntregados((valor) => !valor)
+            }
           >
             <span>Entregados </span>
             <strong>{pedidosEntregados.length}</strong>
-            <span>{mostrarEntregados ? " Ocultar" : " Ver"}</span>
+
+            <span>
+              {mostrarEntregados ? " Ocultar" : " Ver"}
+            </span>
           </button>
 
-          {mostrarEntregados && pedidosEntregados.map((pedido) => (
-            <PedidoCard key={pedido.id} pedido={pedido} compacto />
-          ))}
+          {mostrarEntregados &&
+            pedidosEntregados.length === 0 && (
+              <p className="kanban-vacio">
+                No hay pedidos entregados.
+              </p>
+            )}
+
+          {mostrarEntregados &&
+            pedidosEntregados.map((pedido) => (
+              <PedidoCard
+                key={pedido.id}
+                pedido={pedido}
+                compacto
+              />
+            ))}
         </div>
 
         <div className="kanban-column">
           <button
             type="button"
             className="column-toggle"
-            onClick={() => setMostrarCancelados((v) => !v)}
+            onClick={() =>
+              setMostrarCancelados((valor) => !valor)
+            }
           >
             <span>Cancelados </span>
             <strong>{pedidosCancelados.length}</strong>
-            <span>{mostrarCancelados ? " Ocultar" : " Ver"}</span>
+
+            <span>
+              {mostrarCancelados ? " Ocultar" : " Ver"}
+            </span>
           </button>
 
-          {mostrarCancelados && pedidosCancelados.map((pedido) => (
-            <PedidoCard key={pedido.id} pedido={pedido} compacto />
-          ))}
+          {mostrarCancelados &&
+            pedidosCancelados.length === 0 && (
+              <p className="kanban-vacio">
+                No hay pedidos cancelados.
+              </p>
+            )}
+
+          {mostrarCancelados &&
+            pedidosCancelados.map((pedido) => (
+              <PedidoCard
+                key={pedido.id}
+                pedido={pedido}
+                compacto
+              />
+            ))}
         </div>
       </div>
     </section>

@@ -581,3 +581,78 @@ input[type="color"] {
   padding-bottom: 110px;
 }
 
+.pedidos-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.pedidos-header h2 {
+  margin: 0;
+}
+
+.pedidos-resumen {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+  opacity: 0.7;
+}
+
+.limpiar-finalizados {
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+
+.pedido-card-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pedido-archivar {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pedido-card-compacta-wrapper {
+  position: relative;
+}
+
+.pedido-card-compacta-wrapper .pedido-card-compacta {
+  width: 100%;
+  padding-right: 48px;
+}
+
+.pedido-archivar-compacto {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  z-index: 2;
+}
+
+.kanban-vacio {
+  font-size: 13px;
+  opacity: 0.6;
+}
+
+@media (max-width: 700px) {
+  .pedidos-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .limpiar-finalizados {
+    width: 100%;
+  }
+}

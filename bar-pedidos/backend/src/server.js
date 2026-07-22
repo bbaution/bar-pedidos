@@ -713,18 +713,22 @@ app.post("/api/pedidos", async (req, res) => {
 
     const [result] = await pool.query(
       `INSERT INTO pedidos (
-        codigo,
-        cliente_nombre,
-        telefono,
-        direccion,
-        horario_entrega,
-        estado,
-        subtotal,
-        total,
-        observaciones
-      )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    cliente_id,
+    codigo,
+    cliente_nombre,
+    telefono,
+    direccion,
+    horario_entrega,
+    estado,
+    subtotal,
+    costo_envio,
+    total,
+    observaciones,
+    archivado
+  )
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
+        req.cliente.id,
         codigo,
         cliente_nombre,
         telefono,
@@ -732,8 +736,10 @@ app.post("/api/pedidos", async (req, res) => {
         horario_entrega,
         "pendiente_confirmacion",
         subtotal,
+        0,
         subtotal,
         observaciones || null,
+        0,
       ]
     );
 
@@ -851,7 +857,7 @@ app.get("/api/pedidos/:codigo", async (req, res) => {
 });
 
 /* =========================================================
-   ADMIN: LISTAR PEDIDOS
+   ADMIN: LISTAR PEDIDOS ACTIVOS
 ========================================================= */
 
 app.get("/api/admin/pedidos", auth, async (req, res) => {
@@ -859,14 +865,18 @@ app.get("/api/admin/pedidos", auth, async (req, res) => {
     const [pedidos] = await pool.query(
       `SELECT *
        FROM pedidos
-       ORDER BY creado_en DESC`
+       WHERE cliente_id = ?
+         AND archivado = 0
+       ORDER BY creado_en DESC`,
+      [req.cliente.id]
     );
 
     for (const pedido of pedidos) {
       const [items] = await pool.query(
         `SELECT *
          FROM pedido_items
-         WHERE pedido_id = ?`,
+         WHERE pedido_id = ?
+         ORDER BY id ASC`,
         [pedido.id]
       );
 
@@ -882,6 +892,107 @@ app.get("/api/admin/pedidos", auth, async (req, res) => {
     });
   }
 });
+
+/* =========================================================
+   ADMIN: ARCHIVAR UN PEDIDO FINALIZADO
+========================================================= */
+
+app.patch("/api/admin/pedidos/:id/archivar", auth, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const [pedidos] = await pool.query(
+      `SELECT id, estado, archivado
+       FROM pedidos
+       WHERE id = ?
+         AND cliente_id = ?
+       LIMIT 1`,
+      [id, req.cliente.id]
+    );
+
+    const pedido = pedidos[0];
+
+    if (!pedido) {
+      return res.status(404).json({
+        error: "Pedido no encontrado",
+      });
+    }
+
+    if (!["entregado", "cancelado"].includes(pedido.estado)) {
+      return res.status(400).json({
+        error: "Solo se pueden archivar pedidos entregados o cancelados",
+      });
+    }
+
+    if (Boolean(pedido.archivado)) {
+      return res.json({
+        ok: true,
+        mensaje: "El pedido ya estaba archivado",
+      });
+    }
+
+    await pool.query(
+      `UPDATE pedidos
+       SET archivado = 1
+       WHERE id = ?
+         AND cliente_id = ?`,
+      [id, req.cliente.id]
+    );
+
+    const io = req.app.get("io");
+
+    if (io) {
+      io.emit("pedido_actualizado");
+    }
+
+    res.json({
+      ok: true,
+    });
+  } catch (error) {
+    console.error("Error archivando pedido:", error);
+
+    res.status(500).json({
+      error: "Error archivando pedido",
+    });
+  }
+});
+
+/* =========================================================
+   ADMIN: ARCHIVAR TODOS LOS PEDIDOS FINALIZADOS
+========================================================= */
+
+app.patch("/api/admin/archivar-pedidos-finalizados", auth, async (req, res) => {
+  try {
+    const [resultado] = await pool.query(
+      `UPDATE pedidos
+       SET archivado = 1
+       WHERE cliente_id = ?
+         AND archivado = 0
+         AND estado IN ('entregado', 'cancelado')`,
+      [req.cliente.id]
+    );
+
+    const io = req.app.get("io");
+
+    if (io) {
+      io.emit("pedido_actualizado", {
+        cliente_id: req.cliente.id,
+      });
+    }
+
+    return res.json({
+      ok: true,
+      archivados: resultado.affectedRows,
+    });
+  } catch (error) {
+    console.error("Error archivando pedidos finalizados:", error);
+
+    return res.status(500).json({
+      error: "Error archivando pedidos finalizados",
+    });
+  }
+});
+
 
 /* =========================================================
    ADMIN: CAMBIAR ESTADO
@@ -910,8 +1021,9 @@ app.patch("/api/admin/pedidos/:id/estado", auth, async (req, res) => {
       `SELECT *
        FROM pedidos
        WHERE id = ?
+         AND cliente_id = ?
        LIMIT 1`,
-      [id]
+      [id, req.cliente.id]
     );
 
     const pedido = pedidos[0];
@@ -925,8 +1037,9 @@ app.patch("/api/admin/pedidos/:id/estado", auth, async (req, res) => {
     await pool.query(
       `UPDATE pedidos
        SET estado = ?
-       WHERE id = ?`,
-      [estado, id]
+       WHERE id = ?
+         AND cliente_id = ?`,
+      [estado, id, req.cliente.id]
     );
 
     await pool.query(
@@ -944,6 +1057,12 @@ app.patch("/api/admin/pedidos/:id/estado", auth, async (req, res) => {
         `Estado actualizado a ${estado}`,
       ]
     );
+
+    const io = req.app.get("io");
+
+    if (io) {
+      io.emit("pedido_actualizado");
+    }
 
     res.json({
       ok: true,
