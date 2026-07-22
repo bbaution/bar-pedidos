@@ -24,4 +24,4 @@ const pool = mysql.createPool({
   connectionLimit: 10,
 });
 
-module.exports = pool;*/
+module.exports = pool;
