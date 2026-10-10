@@ -1,3 +1,5 @@
+require("dotenv").config();
+
 const express = require("express");
 const cors = require("cors");
 const bcrypt = require("bcrypt");
@@ -233,6 +235,69 @@ app.get("/api/horarios", async (req, res) => {
   }
 });
 
+// Sabores de cada plato (docena de empanadas, canelones, etc.). Cada plato
+// tiene su propia lista. Público: solo disponibles y no archivados.
+// Admin: todos, con sus flags, para poder reactivar/restaurar.
+async function cargarSaboresDePlatos(clienteId, { soloDisponibles }) {
+  const [rows] = await pool.query(
+    `SELECT
+      s.plato_id,
+      s.id,
+      s.nombre,
+      s.disponible,
+      s.archivado
+    FROM sabores s
+    INNER JOIN platos p ON p.id = s.plato_id
+    WHERE s.cliente_id = ?
+    AND p.cliente_id = ?
+    ${soloDisponibles ? "AND s.disponible = TRUE AND s.archivado = FALSE" : ""}
+    ORDER BY s.id ASC`,
+    [clienteId, clienteId]
+  );
+
+  return rows;
+}
+
+// Guarda la lista de sabores que viene del form del plato:
+// con id => actualiza nombre/disponible/archivado; sin id => inserta.
+// Nunca borra: sacar un sabor = archivarlo.
+async function guardarSaboresDePlato(clienteId, platoId, sabores) {
+  if (!Array.isArray(sabores)) return;
+
+  for (const sabor of sabores) {
+    const nombre = String(sabor.nombre || "").trim();
+    if (!nombre) continue;
+
+    const disponible = sabor.disponible !== false;
+    const archivado = Boolean(sabor.archivado);
+
+    if (sabor.id) {
+      await pool.query(
+        `UPDATE sabores
+         SET nombre = ?, disponible = ?, archivado = ?
+         WHERE id = ?
+         AND plato_id = ?
+         AND cliente_id = ?`,
+        [nombre, disponible, archivado, sabor.id, platoId, clienteId]
+      );
+    } else {
+      await pool.query(
+        `INSERT INTO sabores (cliente_id, plato_id, nombre, disponible, archivado)
+         SELECT p.cliente_id, p.id, ?, ?, ?
+         FROM platos p
+         WHERE p.id = ?
+         AND p.cliente_id = ?`,
+        [nombre, disponible, archivado, platoId, clienteId]
+      );
+    }
+  }
+}
+
+function normalizarCantidadUnidades(valor) {
+  const cantidad = Number(valor);
+  return Number.isInteger(cantidad) && cantidad > 0 ? cantidad : null;
+}
+
 app.get("/api/platos", async (req, res) => {
   try {
     const [platos] = await pool.query(
@@ -262,14 +327,76 @@ app.get("/api/platos", async (req, res) => {
       [req.cliente.id, req.cliente.id]
     );
 
-    const resultado = platos.map((plato) => ({
-      ...plato,
-      guarniciones: guarniciones.filter((g) => g.plato_id === plato.id),
-    }));
+    const sabores = await cargarSaboresDePlatos(req.cliente.id, {
+      soloDisponibles: false,
+    });
+
+    const resultado = platos.map((plato) => {
+      const saboresPlato = sabores.filter(
+        (s) => s.plato_id === plato.id && !s.archivado
+      );
+
+      return {
+        ...plato,
+        guarniciones: guarniciones.filter((g) => g.plato_id === plato.id),
+        // true aunque hoy no haya ninguno disponible: el plato no se puede
+        // pedir sin elegir sabores
+        usa_sabores: Boolean(plato.cantidad_unidades) || saboresPlato.length > 0,
+        sabores: saboresPlato.filter((s) => s.disponible),
+      };
+    });
 
     res.json(resultado);
   } catch (error) {
     console.error("Error platos:", error);
+    res.status(500).json({ error: "Error cargando platos" });
+  }
+});
+
+/* =========================================================
+   ADMIN: PLATOS (incluye no disponibles)
+========================================================= */
+
+app.get("/api/admin/platos", auth, async (req, res) => {
+  try {
+    const [platos] = await pool.query(
+      `SELECT
+        p.*,
+        c.nombre AS categoria_nombre
+      FROM platos p
+      LEFT JOIN categorias c ON c.id = p.categoria_id
+      WHERE p.cliente_id = ?
+      ORDER BY c.orden ASC, p.orden ASC`,
+      [req.cliente.id]
+    );
+
+    const [guarniciones] = await pool.query(
+      `SELECT
+        pg.plato_id,
+        g.id,
+        g.nombre,
+        g.precio
+      FROM plato_guarniciones pg
+      INNER JOIN guarniciones g ON g.id = pg.guarnicion_id
+      INNER JOIN platos p ON p.id = pg.plato_id
+      WHERE g.cliente_id = ?
+      AND p.cliente_id = ?`,
+      [req.cliente.id, req.cliente.id]
+    );
+
+    const sabores = await cargarSaboresDePlatos(req.cliente.id, {
+      soloDisponibles: false,
+    });
+
+    const resultado = platos.map((plato) => ({
+      ...plato,
+      guarniciones: guarniciones.filter((g) => g.plato_id === plato.id),
+      sabores: sabores.filter((s) => s.plato_id === plato.id),
+    }));
+
+    res.json(resultado);
+  } catch (error) {
+    console.error("Error platos admin:", error);
     res.status(500).json({ error: "Error cargando platos" });
   }
 });
@@ -475,12 +602,15 @@ app.post("/api/admin/platos", auth, async (req, res) => {
       permite_guarnicion,
       orden,
       guarniciones,
+      sabores,
     } = req.body;
 
+    const cantidadUnidades = normalizarCantidadUnidades(req.body.cantidad_unidades);
+
     const [result] = await pool.query(
-      `INSERT INTO platos 
-      (cliente_id, categoria_id, nombre, descripcion, precio, foto_url, disponible, permite_guarnicion, orden)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO platos
+      (cliente_id, categoria_id, nombre, descripcion, precio, foto_url, disponible, permite_guarnicion, orden, cantidad_unidades)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         req.cliente.id,
         categoria_id,
@@ -491,6 +621,7 @@ app.post("/api/admin/platos", auth, async (req, res) => {
         disponible,
         permite_guarnicion,
         orden,
+        cantidadUnidades,
       ]
     );
 
@@ -508,6 +639,8 @@ app.post("/api/admin/platos", auth, async (req, res) => {
         );
       }
     }
+
+    await guardarSaboresDePlato(req.cliente.id, platoId, sabores);
 
     res.json({ ok: true, id: platoId });
   } catch (error) {
@@ -530,12 +663,15 @@ app.put("/api/admin/platos/:id", auth, async (req, res) => {
       permite_guarnicion,
       orden,
       guarniciones,
+      sabores,
     } = req.body;
 
+    const cantidadUnidades = normalizarCantidadUnidades(req.body.cantidad_unidades);
+
     await pool.query(
-      `UPDATE platos 
-       SET categoria_id = ?, nombre = ?, descripcion = ?, precio = ?, foto_url = ?, 
-           disponible = ?, permite_guarnicion = ?, orden = ?
+      `UPDATE platos
+       SET categoria_id = ?, nombre = ?, descripcion = ?, precio = ?, foto_url = ?,
+           disponible = ?, permite_guarnicion = ?, orden = ?, cantidad_unidades = ?
        WHERE id = ?
        AND cliente_id = ?`,
       [
@@ -547,6 +683,7 @@ app.put("/api/admin/platos/:id", auth, async (req, res) => {
         disponible,
         permite_guarnicion,
         orden,
+        cantidadUnidades,
         id,
         req.cliente.id,
       ]
@@ -573,6 +710,8 @@ app.put("/api/admin/platos/:id", auth, async (req, res) => {
         );
       }
     }
+
+    await guardarSaboresDePlato(req.cliente.id, id, sabores);
 
     res.json({ ok: true });
   } catch (error) {
@@ -682,6 +821,84 @@ function generarCodigoPedido() {
   return `${Date.now().toString().slice(-4)}-${random}`;
 }
 
+// Valida el reparto de sabores de cada item y antepone el detalle a
+// item.observaciones, p. ej. "Carne x4, Queso x4, Choclo x4 | Guarnición: Arroz".
+// - Cantidad fija (cantidad_unidades): la suma tiene que dar exacto.
+// - Libre (sin cantidad pero con sabores): al menos 1 unidad.
+// Devuelve un mensaje de error o null.
+async function agregarDetalleSabores(clienteId, items) {
+  const platoIds = [
+    ...new Set(items.map((item) => Number(item.plato_id)).filter(Boolean)),
+  ];
+
+  if (platoIds.length === 0) return null;
+
+  const [platos] = await pool.query(
+    `SELECT p.id, p.nombre, p.cantidad_unidades
+     FROM platos p
+     WHERE p.id IN (?)
+     AND p.cliente_id = ?
+     AND (
+       p.cantidad_unidades IS NOT NULL
+       OR EXISTS (
+         SELECT 1 FROM sabores s
+         WHERE s.plato_id = p.id
+         AND s.archivado = FALSE
+       )
+     )`,
+    [platoIds, clienteId]
+  );
+
+  if (platos.length === 0) return null;
+
+  const sabores = await cargarSaboresDePlatos(clienteId, {
+    soloDisponibles: true,
+  });
+
+  for (const item of items) {
+    const plato = platos.find((p) => p.id === Number(item.plato_id));
+    if (!plato) continue;
+
+    const elegidos = (Array.isArray(item.sabores) ? item.sabores : [])
+      .map((s) => ({ id: Number(s.id), cantidad: Number(s.cantidad) }))
+      .filter((s) => s.cantidad > 0);
+
+    const total = elegidos.reduce((acc, s) => acc + s.cantidad, 0);
+
+    if (elegidos.some((s) => !Number.isInteger(s.cantidad))) {
+      return `Cantidad de sabores inválida en "${plato.nombre}"`;
+    }
+
+    if (plato.cantidad_unidades && total !== plato.cantidad_unidades) {
+      return `Elegí ${plato.cantidad_unidades} unidades en "${plato.nombre}"`;
+    }
+
+    if (!plato.cantidad_unidades && total < 1) {
+      return `Elegí al menos un sabor en "${plato.nombre}"`;
+    }
+
+    const partes = [];
+
+    for (const elegido of elegidos) {
+      const sabor = sabores.find(
+        (s) => s.plato_id === plato.id && s.id === elegido.id
+      );
+
+      if (!sabor) {
+        return `Un sabor elegido en "${plato.nombre}" ya no está disponible`;
+      }
+
+      partes.push(`${sabor.nombre} x${elegido.cantidad}`);
+    }
+
+    item.observaciones = [partes.join(", "), item.observaciones]
+      .filter(Boolean)
+      .join(" | ");
+  }
+
+  return null;
+}
+
 /* =========================================================
    CREAR PEDIDO
 ========================================================= */
@@ -701,6 +918,12 @@ app.post("/api/pedidos", async (req, res) => {
       return res.status(400).json({
         error: "El pedido no tiene productos",
       });
+    }
+
+    const errorSabores = await agregarDetalleSabores(req.cliente.id, items);
+
+    if (errorSabores) {
+      return res.status(400).json({ error: errorSabores });
     }
 
     let subtotal = 0;

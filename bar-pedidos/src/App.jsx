@@ -38,6 +38,11 @@ function formatMoney(value) {
   });
 }
 
+// [{ nombre: "Carne", cantidad: 4 }, ...] -> "Carne x4, Queso x4"
+function textoSabores(sabores) {
+  return sabores.map((s) => `${s.nombre} x${s.cantidad}`).join(", ");
+}
+
 function getAuthHeaders() {
   const token = localStorage.getItem("admin_token");
 
@@ -172,6 +177,9 @@ function PedidoTracking() {
         {pedido.items?.map((item) => (
           <div key={item.id} className="tracking-item">
             {item.cantidad}x {item.nombre_producto}
+            {item.observaciones && (
+              <small className="item-detalle">{item.observaciones}</small>
+            )}
           </div>
         ))}
 
@@ -365,7 +373,8 @@ function HomePage() {
     form.formaPago.trim() &&
     carrito.length > 0;
 
-  function agregarAlCarrito(plato, guarnicion) {
+  // unidades > 1 en platos con sabores libres: el precio del plato es por unidad
+  function agregarAlCarrito(plato, guarnicion, sabores = null, unidades = 1) {
     const precioPlato = Number(plato.precio);
     const precioGuarnicion = guarnicion ? Number(guarnicion.precio) : 0;
 
@@ -375,10 +384,11 @@ function HomePage() {
         id: crypto.randomUUID(),
         platoId: plato.id,
         nombre: plato.nombre,
-        precio: precioPlato + precioGuarnicion,
+        precio: precioPlato * unidades + precioGuarnicion,
         precioBase: precioPlato,
         cantidad: 1,
         guarnicion,
+        sabores,
       },
     ]);
   }
@@ -398,9 +408,14 @@ function HomePage() {
           }`
           : "";
 
+        const lineaSabores = item.sabores?.length
+          ? `
+  Sabores: ${textoSabores(item.sabores)}`
+          : "";
+
         return `- ${item.cantidad}x ${item.nombre} - $${formatMoney(
           item.precio * item.cantidad
-        )}${lineaGuarnicion}`;
+        )}${lineaSabores}${lineaGuarnicion}`;
       })
       .join("\n");
 
@@ -444,6 +459,8 @@ Total: $${formatMoney(pedidoCreado.total || total)}`;
           observaciones: item.guarnicion
             ? `Guarnición: ${item.guarnicion.nombre}`
             : null,
+          // El backend valida el reparto y agrega el detalle a observaciones
+          sabores: item.sabores?.map((s) => ({ id: s.id, cantidad: s.cantidad })),
         })),
       };
 
@@ -457,7 +474,10 @@ Total: $${formatMoney(pedidoCreado.total || total)}`;
       window.location.href = whatsappUrl;
     } catch (error) {
       console.error("Error creando pedido antes de WhatsApp:", error);
-      alert("No se pudo crear el pedido. Intentá nuevamente.");
+      alert(
+        error.response?.data?.error ||
+        "No se pudo crear el pedido. Intentá nuevamente."
+      );
     }
   }
   function irAlCarrito() {
@@ -547,6 +567,10 @@ Total: $${formatMoney(pedidoCreado.total || total)}`;
               <strong>
                 {item.cantidad}x {item.nombre}
               </strong>
+
+              {item.sabores?.length > 0 && (
+                <span>{textoSabores(item.sabores)}</span>
+              )}
 
               {item.guarnicion && (
                 <span>
@@ -671,21 +695,55 @@ Total: $${formatMoney(pedidoCreado.total || total)}`;
 // Card de plato del catálogo
 // =====================================================
 
+// Clave para comparar repartos: misma combinación => misma línea del carrito
+function claveSabores(sabores) {
+  return (sabores || [])
+    .map((s) => `${s.id}:${s.cantidad}`)
+    .sort()
+    .join(",");
+}
+
 function PlatoCard({ plato, agregarAlCarrito, carrito, setCarrito }) {
   const [guarnicionId, setGuarnicionId] = useState("");
+  // { [saborId]: cantidad } para platos con sabores (docena de empanadas, etc.)
+  const [reparto, setReparto] = useState({});
 
   const guarnicionSeleccionada = plato.guarniciones?.find(
     (g) => String(g.id) === String(guarnicionId)
   );
 
+  // Cantidad fija (docena = 12): hay que completar exacto.
+  // Libre (sin cantidad): elige los sabores y cuántos quiera; precio por unidad.
+  const cantidadUnidades = Number(plato.cantidad_unidades) || 0;
+  const saboresPlato = plato.sabores || [];
+  const usaSabores =
+    Boolean(plato.usa_sabores) || cantidadUnidades > 0 || saboresPlato.length > 0;
+  const esLibre = usaSabores && cantidadUnidades === 0;
+  const totalReparto = Object.values(reparto).reduce((acc, n) => acc + n, 0);
+  const repartoCompleto = esLibre
+    ? totalReparto > 0
+    : totalReparto === cantidadUnidades;
+  const repartoLleno = !esLibre && totalReparto >= cantidadUnidades;
+
+  const saboresElegidos = usaSabores
+    ? saboresPlato
+      .filter((s) => reparto[s.id] > 0)
+      .map((s) => ({ id: s.id, nombre: s.nombre, cantidad: reparto[s.id] }))
+    : null;
+
   const itemExistente = carrito.find(
     (item) =>
       item.platoId === plato.id &&
       String(item.guarnicion?.id || "") ===
-      String(guarnicionSeleccionada?.id || "")
+      String(guarnicionSeleccionada?.id || "") &&
+      claveSabores(item.sabores) === claveSabores(saboresElegidos)
   );
 
   const cantidad = itemExistente?.cantidad || 0;
+
+  const cantidadEnCarrito = carrito
+    .filter((item) => item.platoId === plato.id)
+    .reduce((acc, item) => acc + item.cantidad, 0);
 
   const tieneGuarniciones =
     Boolean(plato.permite_guarnicion) && plato.guarniciones?.length > 0;
@@ -693,6 +751,42 @@ function PlatoCard({ plato, agregarAlCarrito, carrito, setCarrito }) {
   const precioMostrado =
     Number(plato.precio) +
     (guarnicionSeleccionada ? Number(guarnicionSeleccionada.precio) : 0);
+
+  function cambiarSabor(saborId, delta) {
+    setReparto((prev) => {
+      const actual = prev[saborId] || 0;
+      const nuevo = actual + delta;
+
+      if (nuevo < 0) return prev;
+      if (delta > 0 && repartoLleno) return prev;
+
+      return { ...prev, [saborId]: nuevo };
+    });
+  }
+
+  function agregarConSabores() {
+    if (!repartoCompleto) return;
+    if (tieneGuarniciones && !guarnicionSeleccionada) return;
+
+    if (itemExistente) {
+      setCarrito((prev) =>
+        prev.map((item) =>
+          item.id === itemExistente.id
+            ? { ...item, cantidad: item.cantidad + 1 }
+            : item
+        )
+      );
+    } else {
+      agregarAlCarrito(
+        plato,
+        guarnicionSeleccionada || null,
+        saboresElegidos,
+        esLibre ? totalReparto : 1
+      );
+    }
+
+    setReparto({});
+  }
 
   function sumar() {
     if (tieneGuarniciones && !guarnicionSeleccionada) return;
@@ -736,7 +830,10 @@ function PlatoCard({ plato, agregarAlCarrito, carrito, setCarrito }) {
 
       <h3>{plato.nombre}</h3>
       <p>{plato.descripcion}</p>
-      <strong>${formatMoney(precioMostrado)}</strong>
+      <strong>
+        ${formatMoney(precioMostrado)}
+        {esLibre && <small className="precio-unidad"> c/u</small>}
+      </strong>
 
       {tieneGuarniciones && (
         <select
@@ -753,7 +850,91 @@ function PlatoCard({ plato, agregarAlCarrito, carrito, setCarrito }) {
         </select>
       )}
 
-      {cantidad === 0 ? (
+      {usaSabores ? (
+        <div className="sabores-card">
+          {saboresPlato.length === 0 ? (
+            <p className="sabores-vacio">Sin sabores disponibles por ahora.</p>
+          ) : (
+            <>
+              <div className="sabores-header">
+                {esLibre ? (
+                  <>
+                    <span>Elegí los sabores</span>
+                    <span className={repartoCompleto ? "sabores-completo" : ""}>
+                      {totalReparto} u.
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span>Elegí {cantidadUnidades} unidades</span>
+                    <span className={repartoCompleto ? "sabores-completo" : ""}>
+                      {totalReparto}/{cantidadUnidades}
+                    </span>
+                  </>
+                )}
+              </div>
+
+              {saboresPlato.map((s) => (
+                <div className="sabor-fila" key={s.id}>
+                  <span>{s.nombre}</span>
+
+                  <div className="sabor-stepper">
+                    <button
+                      type="button"
+                      onClick={() => cambiarSabor(s.id, -1)}
+                      disabled={!reparto[s.id]}
+                      aria-label={`Quitar ${s.nombre}`}
+                    >
+                      <Minus size={14} />
+                    </button>
+
+                    <span>{reparto[s.id] || 0}</span>
+
+                    <button
+                      type="button"
+                      onClick={() => cambiarSabor(s.id, 1)}
+                      disabled={repartoLleno}
+                      aria-label={`Sumar ${s.nombre}`}
+                    >
+                      <Plus size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+              <button
+                type="button"
+                className="sabores-agregar"
+                onClick={agregarConSabores}
+                disabled={
+                  !repartoCompleto ||
+                  (tieneGuarniciones && !guarnicionSeleccionada)
+                }
+              >
+                <Plus size={16} />
+                {esLibre
+                  ? repartoCompleto
+                    ? `Agregar · $${formatMoney(
+                      Number(plato.precio) * totalReparto +
+                      (guarnicionSeleccionada
+                        ? Number(guarnicionSeleccionada.precio)
+                        : 0)
+                    )}`
+                    : "Elegí al menos uno"
+                  : repartoCompleto
+                    ? "Agregar al carrito"
+                    : `Faltan ${cantidadUnidades - totalReparto}`}
+              </button>
+
+              {cantidadEnCarrito > 0 && (
+                <span className="sabores-en-carrito">
+                  En el carrito: {cantidadEnCarrito}
+                </span>
+              )}
+            </>
+          )}
+        </div>
+      ) : cantidad === 0 ? (
         <button className="botonplus"
           onClick={sumar}
           disabled={tieneGuarniciones && !guarnicionSeleccionada}
@@ -925,6 +1106,8 @@ function AdminPage() {
     permite_guarnicion: false,
     orden: 0,
     guarniciones: [],
+    cantidad_unidades: "",
+    sabores: [],
   });
 
   const [editPlatoId, setEditPlatoId] = useState(null);
@@ -938,6 +1121,8 @@ function AdminPage() {
     permite_guarnicion: false,
     orden: 0,
     guarniciones: [],
+    cantidad_unidades: "",
+    sabores: [],
   });
 
   useEffect(() => {
@@ -1241,7 +1426,7 @@ function AdminPage() {
       configRes,
       pedidosRes,
     ] = await Promise.all([
-      api.get("/platos"),
+      api.get("/admin/platos", getAuthHeaders()),
       api.get("/categorias"),
       api.get("/guarniciones"),
       api.get("/horarios"),
@@ -1469,8 +1654,39 @@ function AdminPage() {
     cargarTodo();
   }
 
+  // Sin cantidad = el plato no usa sabores. Con cantidad, necesita al menos
+  // un sabor activo (no archivado).
+  function saboresPlatoValidos(plato) {
+    const tieneCantidad = Number(plato.cantidad_unidades) > 0;
+    const tieneSabores = plato.sabores.some((s) => !s.archivado);
+
+    if (tieneCantidad && !tieneSabores) {
+      alert("Agregá al menos un sabor o dejá vacía la cantidad de unidades.");
+      return false;
+    }
+
+    return true;
+  }
+
+  // Los sabores se mandan siempre (aunque no haya cantidad) para no perder
+  // cambios como archivar; el backend los inserta o actualiza.
+  function datosSaboresPlato(plato) {
+    const cantidad = Number(plato.cantidad_unidades);
+
+    return {
+      cantidad_unidades: cantidad > 0 ? cantidad : null,
+      sabores: plato.sabores.map(({ id, nombre, disponible, archivado }) => ({
+        id,
+        nombre,
+        disponible,
+        archivado,
+      })),
+    };
+  }
+
   async function agregarPlato() {
     if (!nuevo.categoria_id || !nuevo.nombre.trim() || !nuevo.precio) return;
+    if (!saboresPlatoValidos(nuevo)) return;
 
     await api.post(
       "/admin/platos",
@@ -1480,6 +1696,7 @@ function AdminPage() {
         precio: Number(nuevo.precio),
         orden: Number(nuevo.orden),
         guarniciones: nuevo.permite_guarnicion ? nuevo.guarniciones : [],
+        ...datosSaboresPlato(nuevo),
       },
       getAuthHeaders()
     );
@@ -1494,6 +1711,8 @@ function AdminPage() {
       permite_guarnicion: false,
       orden: 0,
       guarniciones: [],
+      cantidad_unidades: "",
+      sabores: [],
     });
 
     cargarTodo();
@@ -1512,12 +1731,22 @@ function AdminPage() {
       permite_guarnicion: Boolean(plato.permite_guarnicion),
       orden: plato.orden || 0,
       guarniciones: plato.guarniciones?.map((g) => g.id) || [],
+      cantidad_unidades: plato.cantidad_unidades || "",
+      sabores:
+        plato.sabores?.map((s) => ({
+          key: s.id,
+          id: s.id,
+          nombre: s.nombre,
+          disponible: Boolean(s.disponible),
+          archivado: Boolean(s.archivado),
+        })) || [],
     });
   }
 
   async function guardarPlato(id) {
     if (!editPlato.categoria_id || !editPlato.nombre.trim() || !editPlato.precio)
       return;
+    if (!saboresPlatoValidos(editPlato)) return;
 
     await api.put(
       `/admin/platos/${id}`,
@@ -1529,6 +1758,7 @@ function AdminPage() {
         guarniciones: editPlato.permite_guarnicion
           ? editPlato.guarniciones
           : [],
+        ...datosSaboresPlato(editPlato),
       },
       getAuthHeaders()
     );
@@ -1776,7 +2006,7 @@ function AdminPage() {
                     onChange={(e) => setPlatoAgregarPedidoId(e.target.value)}
                   >
                     <option value="">Agregar producto</option>
-                    {platos.map((plato) => (
+                    {platos.filter((plato) => plato.disponible).map((plato) => (
                       <option key={plato.id} value={plato.id}>
                         {plato.nombre} - ${formatMoney(plato.precio)}
                       </option>
@@ -1930,6 +2160,9 @@ function AdminPedidosPanel({
         {pedido.items?.map((item) => (
           <div key={item.id} className="pedido-item-mini">
             {item.cantidad}x {item.nombre_producto}
+            {item.observaciones && (
+              <small className="item-detalle">{item.observaciones}</small>
+            )}
           </div>
         ))}
 
@@ -2522,6 +2755,154 @@ function AdminGuarniciones({
 }
 
 // =====================================================
+// Admin: sabores del plato (alta y edición)
+// Cada plato tiene su propia lista. No se eliminan: se archivan.
+// =====================================================
+
+function SaboresPlatoFields({ plato, setPlato }) {
+  const [nuevoSabor, setNuevoSabor] = useState("");
+
+  const activos = plato.sabores.filter((s) => !s.archivado);
+  const archivados = plato.sabores.filter((s) => s.archivado);
+
+  function actualizarSabor(key, cambios) {
+    setPlato({
+      ...plato,
+      sabores: plato.sabores.map((s) =>
+        s.key === key ? { ...s, ...cambios } : s
+      ),
+    });
+  }
+
+  function agregarSabor() {
+    const nombre = nuevoSabor.trim();
+    if (!nombre) return;
+
+    setPlato({
+      ...plato,
+      sabores: [
+        ...plato.sabores,
+        {
+          key: crypto.randomUUID(),
+          nombre,
+          disponible: true,
+          archivado: false,
+        },
+      ],
+    });
+
+    setNuevoSabor("");
+  }
+
+  // Si todavía no se guardó, se descarta; si ya existe, se archiva
+  function quitarSabor(sabor) {
+    if (!sabor.id) {
+      setPlato({
+        ...plato,
+        sabores: plato.sabores.filter((s) => s.key !== sabor.key),
+      });
+      return;
+    }
+
+    actualizarSabor(sabor.key, { archivado: true });
+  }
+
+  return (
+    <div className="sabores-admin">
+      <div className="sabores-admin-titulo">
+        <strong>Sabores</strong>
+        <small>
+          Con unidades (ej: 12) el cliente completa esa cantidad. Sin unidades
+          elige libre y el precio es por unidad.
+        </small>
+      </div>
+
+      <div className="sabores-admin-fila">
+        <input
+          type="number"
+          min="1"
+          placeholder="Unidades (ej: 12)"
+          value={plato.cantidad_unidades}
+          onChange={(e) =>
+            setPlato({ ...plato, cantidad_unidades: e.target.value })
+          }
+        />
+
+        <input
+          placeholder="Nuevo sabor (ej: Carne)"
+          value={nuevoSabor}
+          onChange={(e) => setNuevoSabor(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              agregarSabor();
+            }
+          }}
+        />
+
+        <button type="button" onClick={agregarSabor}>
+          Agregar sabor
+        </button>
+      </div>
+
+      {activos.length > 0 && (
+        <div className="sabores-chips">
+          {activos.map((s) => (
+            <div
+              key={s.key}
+              className={`sabor-chip ${s.disponible ? "" : "sabor-chip-off"}`}
+            >
+              <label title="Disponible">
+                <input
+                  type="checkbox"
+                  checked={s.disponible}
+                  onChange={(e) =>
+                    actualizarSabor(s.key, { disponible: e.target.checked })
+                  }
+                />
+                {s.nombre}
+              </label>
+
+              <button
+                type="button"
+                onClick={() => quitarSabor(s)}
+                title={s.id ? "Archivar sabor" : "Quitar sabor"}
+                aria-label={`Quitar ${s.nombre}`}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {activos.length > 0 && (
+        <small className="sabores-admin-ayuda">
+          Destildá un sabor si no hay por hoy. Con × lo sacás del plato.
+        </small>
+      )}
+
+      {archivados.length > 0 && (
+        <div className="sabores-archivados">
+          <small>Archivados:</small>
+
+          {archivados.map((s) => (
+            <button
+              type="button"
+              key={s.key}
+              onClick={() => actualizarSabor(s.key, { archivado: false })}
+              title="Restaurar sabor"
+            >
+              ↺ {s.nombre}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// =====================================================
 // Admin: CRUD horarios de entrega
 // =====================================================
 
@@ -2668,6 +3049,12 @@ function AdminPlatos({
   guardarPlato,
   eliminarPlato,
 }) {
+  const [soloNoDisponibles, setSoloNoDisponibles] = useState(false);
+
+  const platosFiltrados = soloNoDisponibles
+    ? platos.filter((p) => !p.disponible)
+    : platos;
+
   return (
     <section className="admin-section">
       <button className="admin-toggle" onClick={() => setMostrar(!mostrar)}>
@@ -2767,11 +3154,32 @@ function AdminPlatos({
               </div>
             )}
 
-            <button onClick={agregarPlato}>Agregar plato</button>
+            <SaboresPlatoFields
+              plato={nuevo}
+              setPlato={setNuevo}
+            />
+
+            <button className="btn-agregar-plato" onClick={agregarPlato}>
+              <Plus size={18} strokeWidth={2.5} />
+              Agregar plato
+            </button>
           </div>
 
+          <label className="check-admin admin-filtro">
+            <input
+              type="checkbox"
+              checked={soloNoDisponibles}
+              onChange={(e) => setSoloNoDisponibles(e.target.checked)}
+            />
+            No Disponible
+          </label>
+
           <div className="admin-list">
-            {platos.map((plato) => (
+            {soloNoDisponibles && platosFiltrados.length === 0 && (
+              <p>No hay platos no disponibles.</p>
+            )}
+
+            {platosFiltrados.map((plato) => (
               <div className="admin-item" key={plato.id}>
                 {editPlatoId === plato.id ? (
                   <div className="edit-plato-form">
@@ -2898,6 +3306,11 @@ function AdminPlatos({
                       </div>
                     )}
 
+                    <SaboresPlatoFields
+                      plato={editPlato}
+                      setPlato={setEditPlato}
+                    />
+
                     <div className="edit-actions">
                       <button onClick={() => guardarPlato(plato.id)}>
                         Guardar
@@ -2911,30 +3324,53 @@ function AdminPlatos({
                   <>
                     <div>
                       <strong>{plato.nombre}</strong>
+                      {!plato.disponible && <small> (No disponible)</small>}
                       <p>${formatMoney(plato.precio)}</p>
                       <small>{plato.categoria_nombre}</small>
                     </div>
 
-                    <small>
-                      Guarniciones:{" "}
-                      {plato.guarniciones?.length
-                        ? plato.guarniciones
-                          .map(
-                            (g) =>
-                              `${g.nombre}${Number(g.precio) > 0
-                                ? ` +$${formatMoney(g.precio)}`
-                                : ""
-                              }`
-                          )
-                          .join(", ")
-                        : "Sin guarniciones"}
-                    </small>
+                    <div className="admin-item-detalle">
+                      <small>
+                        Guarniciones:{" "}
+                        {plato.guarniciones?.length
+                          ? plato.guarniciones
+                            .map(
+                              (g) =>
+                                `${g.nombre}${Number(g.precio) > 0
+                                  ? ` +$${formatMoney(g.precio)}`
+                                  : ""
+                                }`
+                            )
+                            .join(", ")
+                          : "Sin guarniciones"}
+                      </small>
 
-                    <div>
+                      {(plato.cantidad_unidades ||
+                        plato.sabores?.some((s) => !s.archivado)) && (
+                        <small>
+                          Sabores (
+                          {plato.cantidad_unidades
+                            ? `${plato.cantidad_unidades} u.`
+                            : "libre, precio c/u"}
+                          ):{" "}
+                          {plato.sabores
+                            ?.filter((s) => !s.archivado)
+                            .map((s) =>
+                              s.disponible ? s.nombre : `${s.nombre} (no disp.)`
+                            )
+                            .join(", ") || "ninguno"}
+                        </small>
+                      )}
+                    </div>
+
+                    <div className="admin-item-actions">
                       <button onClick={() => comenzarEditarPlato(plato)}>
                         Editar
                       </button>
-                      <button onClick={() => eliminarPlato(plato.id)}>
+                      <button
+                        className="btn-eliminar"
+                        onClick={() => eliminarPlato(plato.id)}
+                      >
                         Eliminar
                       </button>
                     </div>

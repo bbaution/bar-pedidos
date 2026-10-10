@@ -177,6 +177,92 @@ section > h2 {
   font-weight: 800;
 }
 
+/* Detalle de un item del pedido (sabores, guarnición) en admin y seguimiento */
+.item-detalle {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Reparto de sabores (docena de empanadas, canelones, etc.) */
+.sabores-card {
+  margin: 0 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sabores-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.card strong .precio-unidad {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.sabores-completo {
+  color: var(--green-dark);
+}
+
+.sabor-fila {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.sabor-stepper {
+  display: grid;
+  grid-template-columns: 28px 26px 28px;
+  align-items: center;
+  text-align: center;
+  font-weight: 800;
+}
+
+.sabor-stepper button {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--green);
+  color: white;
+  display: grid;
+  place-items: center;
+}
+
+.sabor-stepper button:disabled,
+.sabores-agregar:disabled {
+  background: #aaa;
+  cursor: not-allowed;
+}
+
+.sabores-agregar {
+  margin-top: 6px;
+  height: 40px;
+  border-radius: 999px;
+  background: var(--green);
+  color: white;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.sabores-en-carrito,
+.card .sabores-card .sabores-vacio {
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
+  margin: 0;
+}
+
 .carrito {
   background: var(--card);
   border: 1px solid var(--border);
@@ -340,6 +426,10 @@ main:not(.layout) h2 {
   grid-template-columns: 1fr 140px auto;
 }
 
+.admin-filtro {
+  margin-top: 18px;
+}
+
 .admin-form button,
 .admin-form-simple button,
 .admin-mini-item button,
@@ -374,10 +464,74 @@ main:not(.layout) h2 {
   grid-template-columns: 1.3fr 1.6fr auto;
 }
 
+/* Guarniciones + sabores en una sola columna */
+.admin-item-detalle {
+  display: grid;
+  gap: 4px;
+}
+
 .admin-item p {
   margin: 4px 0;
   font-weight: 800;
   color: var(--green-dark);
+}
+
+.admin-form .btn-agregar-plato {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  align-self: center;
+  min-height: 46px;
+  border: 0;
+  border-radius: 14px;
+  font-size: 15px;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(47, 74, 63, 0.25);
+  transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.admin-form .btn-agregar-plato:hover {
+  background: var(--green-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(47, 74, 63, 0.3);
+}
+
+.admin-form .btn-agregar-plato:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(47, 74, 63, 0.25);
+}
+
+.admin-item-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.admin-item-actions button {
+  background: var(--green);
+  color: white;
+  border: 0;
+  border-radius: 12px;
+  padding: 10px 18px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.admin-item-actions button:hover {
+  background: var(--green-dark);
+}
+
+.admin-item-actions .btn-eliminar {
+  background: transparent;
+  color: var(--orange);
+  border: 1px solid var(--orange);
+}
+
+.admin-item-actions .btn-eliminar:hover {
+  background: var(--orange);
+  color: white;
 }
 
 .admin-item small,
@@ -388,7 +542,18 @@ main:not(.layout) h2 {
 .check-admin {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   gap: 8px;
+  cursor: pointer;
+}
+
+.check-admin input[type="checkbox"],
+.guarniciones-admin input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0;
 }
 
 .guarniciones-admin {
@@ -402,6 +567,115 @@ main:not(.layout) h2 {
   background: #f7eee7;
   border-radius: 999px;
   padding: 8px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+/* Bloque de sabores en el form de plato */
+.sabores-admin {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+.sabores-admin-titulo {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.sabores-admin-titulo small,
+.sabores-admin-ayuda,
+.sabores-archivados small {
+  color: var(--muted);
+}
+
+.sabores-admin-fila {
+  display: grid;
+  grid-template-columns: 180px 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.sabores-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sabor-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #f7eee7;
+  border-radius: 999px;
+  padding: 6px 6px 6px 12px;
+}
+
+.sabor-chip label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.sabor-chip input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+}
+
+.sabor-chip-off label {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+/* Más específico que .admin-form button para no heredar el botón verde */
+.sabores-admin .sabor-chip button {
+  width: 26px;
+  min-width: 0;
+  height: 26px;
+  padding: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+  box-shadow: none;
+}
+
+.sabores-admin .sabor-chip button:hover {
+  background: #ead9cc;
+  color: var(--text);
+}
+
+.sabores-archivados {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.sabores-admin .sabores-archivados button {
+  width: auto;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px dashed var(--border);
+  color: var(--muted);
+  font-weight: 600;
+}
+
+@media (max-width: 760px) {
+  .sabores-admin-fila {
+    grid-template-columns: 1fr;
+  }
 }
 
 .edit-plato-form {
@@ -548,6 +822,11 @@ main:not(.layout) h2 {
   .card select {
     grid-area: select;
     margin: 2px 0 0;
+  }
+
+  .sabores-card {
+    grid-column: 1 / -1;
+    margin: 6px 0 0;
   }
 
   .card > button {
