@@ -1767,12 +1767,29 @@ function AdminPage() {
     cargarTodo();
   }
 
-  async function eliminarPlato(id) {
-    const confirmar = confirm("¿Eliminar este plato?");
+  async function archivarPlato(id) {
+    const confirmar = confirm(
+      "¿Archivar este plato?\n\nDejará de aparecer en el menú. Lo podés ver y restaurar con el filtro \"Archivados\"."
+    );
     if (!confirmar) return;
 
-    await api.delete(`/admin/platos/${id}`, getAuthHeaders());
-    cargarTodo();
+    try {
+      await api.patch(`/admin/platos/${id}/archivar`, {}, getAuthHeaders());
+      cargarTodo();
+    } catch (error) {
+      console.error(error);
+      alert(error.response?.data?.error || "No se pudo archivar el plato");
+    }
+  }
+
+  async function restaurarPlato(id) {
+    try {
+      await api.patch(`/admin/platos/${id}/restaurar`, {}, getAuthHeaders());
+      cargarTodo();
+    } catch (error) {
+      console.error(error);
+      alert(error.response?.data?.error || "No se pudo restaurar el plato");
+    }
   }
 
   return (
@@ -1857,7 +1874,8 @@ function AdminPage() {
           agregarPlato={agregarPlato}
           comenzarEditarPlato={comenzarEditarPlato}
           guardarPlato={guardarPlato}
-          eliminarPlato={eliminarPlato}
+          archivarPlato={archivarPlato}
+          restaurarPlato={restaurarPlato}
         />
 
         <AdminPedidosPanel
@@ -3047,13 +3065,19 @@ function AdminPlatos({
   agregarPlato,
   comenzarEditarPlato,
   guardarPlato,
-  eliminarPlato,
+  archivarPlato,
+  restaurarPlato,
 }) {
   const [soloNoDisponibles, setSoloNoDisponibles] = useState(false);
+  const [verArchivados, setVerArchivados] = useState(false);
 
-  const platosFiltrados = soloNoDisponibles
-    ? platos.filter((p) => !p.disponible)
-    : platos;
+  // Los archivados solo se ven con el filtro "Archivados"; el resto de la
+  // lista muestra únicamente los activos.
+  const platosFiltrados = platos.filter(
+    (p) =>
+      Boolean(p.archivado) === verArchivados &&
+      (!soloNoDisponibles || !p.disponible)
+  );
 
   return (
     <section className="admin-section">
@@ -3115,17 +3139,6 @@ function AdminPlatos({
             <label className="check-admin">
               <input
                 type="checkbox"
-                checked={nuevo.disponible}
-                onChange={(e) =>
-                  setNuevo({ ...nuevo, disponible: e.target.checked })
-                }
-              />
-              Disponible
-            </label>
-
-            <label className="check-admin">
-              <input
-                type="checkbox"
                 checked={nuevo.permite_guarnicion}
                 onChange={(e) =>
                   setNuevo({
@@ -3165,17 +3178,43 @@ function AdminPlatos({
             </button>
           </div>
 
-          <label className="check-admin admin-filtro">
-            <input
-              type="checkbox"
-              checked={soloNoDisponibles}
-              onChange={(e) => setSoloNoDisponibles(e.target.checked)}
-            />
-            No Disponible
-          </label>
+          <div className="admin-filtros">
+            <label className="check-admin">
+              <input
+                type="checkbox"
+                checked={nuevo.disponible}
+                onChange={(e) =>
+                  setNuevo({ ...nuevo, disponible: e.target.checked })
+                }
+              />
+              Disponible
+            </label>
+
+            <label className="check-admin">
+              <input
+                type="checkbox"
+                checked={soloNoDisponibles}
+                onChange={(e) => setSoloNoDisponibles(e.target.checked)}
+              />
+              No Disponible
+            </label>
+
+            <label className="check-admin">
+              <input
+                type="checkbox"
+                checked={verArchivados}
+                onChange={(e) => setVerArchivados(e.target.checked)}
+              />
+              Archivados
+            </label>
+          </div>
 
           <div className="admin-list">
-            {soloNoDisponibles && platosFiltrados.length === 0 && (
+            {verArchivados && platosFiltrados.length === 0 && (
+              <p>No hay platos archivados.</p>
+            )}
+
+            {!verArchivados && soloNoDisponibles && platosFiltrados.length === 0 && (
               <p>No hay platos no disponibles.</p>
             )}
 
@@ -3364,15 +3403,23 @@ function AdminPlatos({
                     </div>
 
                     <div className="admin-item-actions">
-                      <button onClick={() => comenzarEditarPlato(plato)}>
-                        Editar
-                      </button>
-                      <button
-                        className="btn-eliminar"
-                        onClick={() => eliminarPlato(plato.id)}
-                      >
-                        Eliminar
-                      </button>
+                      {plato.archivado ? (
+                        <button onClick={() => restaurarPlato(plato.id)}>
+                          Restaurar
+                        </button>
+                      ) : (
+                        <>
+                          <button onClick={() => comenzarEditarPlato(plato)}>
+                            Editar
+                          </button>
+                          <button
+                            className="btn-eliminar"
+                            onClick={() => archivarPlato(plato.id)}
+                          >
+                            Archivar
+                          </button>
+                        </>
+                      )}
                     </div>
                   </>
                 )}

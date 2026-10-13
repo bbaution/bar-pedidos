@@ -426,7 +426,10 @@ main:not(.layout) h2 {
   grid-template-columns: 1fr 140px auto;
 }
 
-.admin-filtro {
+.admin-filtros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 28px;
   margin-top: 18px;
 }
 

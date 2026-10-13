@@ -307,6 +307,7 @@ app.get("/api/platos", async (req, res) => {
       FROM platos p
       LEFT JOIN categorias c ON c.id = p.categoria_id
       WHERE p.disponible = TRUE
+      AND p.archivado = FALSE
       AND p.cliente_id = ?
       ORDER BY c.orden ASC, p.orden ASC`,
       [req.cliente.id]
@@ -720,30 +721,41 @@ app.put("/api/admin/platos/:id", auth, async (req, res) => {
   }
 });
 
-app.delete("/api/admin/platos/:id", auth, async (req, res) => {
+// Los platos se archivan en vez de borrarse. No se borra la fila porque los
+// pedido_items viejos apuntan a su plato_id (en producción el DELETE daba 500).
+// El admin puede ver los archivados y restaurarlos.
+async function setPlatoArchivado(req, res, archivado) {
   try {
     const { id } = req.params;
 
-    await pool.query(
-      `DELETE pg
-       FROM plato_guarniciones pg
-       INNER JOIN platos p ON p.id = pg.plato_id
-       WHERE pg.plato_id = ?
-       AND p.cliente_id = ?`,
-      [id, req.cliente.id]
+    const [result] = await pool.query(
+      `UPDATE platos
+       SET archivado = ?
+       WHERE id = ?
+       AND cliente_id = ?`,
+      [archivado, id, req.cliente.id]
     );
 
-    await pool.query(
-      "DELETE FROM platos WHERE id = ? AND cliente_id = ?",
-      [id, req.cliente.id]
-    );
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: "Plato no encontrado" });
+    }
 
     res.json({ ok: true });
   } catch (error) {
-    console.error("Error eliminando plato:", error);
-    res.status(500).json({ error: "Error eliminando plato" });
+    console.error("Error archivando/restaurando plato:", error);
+    res.status(500).json({
+      error: archivado ? "Error archivando plato" : "Error restaurando plato",
+    });
   }
-});
+}
+
+app.patch("/api/admin/platos/:id/archivar", auth, (req, res) =>
+  setPlatoArchivado(req, res, true)
+);
+
+app.patch("/api/admin/platos/:id/restaurar", auth, (req, res) =>
+  setPlatoArchivado(req, res, false)
+);
 
 /* =========================================================
    ADMIN: CONFIGURACIÓN DEL LOCAL
